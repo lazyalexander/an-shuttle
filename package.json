@@ -1,0 +1,19 @@
+{
+  "name": "an-shuttle",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "node --test dist/view.test.js",
+    "test:browser": "node --test dist/browser.test.js"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.3",
+    "playwright-core": "1.62.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plate parameters · an-shuttle</title>
+<style>body{max-width:38rem;margin:8vh auto;padding:0 1.4rem;background:#17212b;color:#e6eef2;font:1rem/1.6 system-ui}label{display:grid;grid-template-columns:1fr auto;gap:.2rem;padding:.5rem .8rem;margin:.8rem 0;border-radius:.4rem}label[data-inspected]{outline:3px solid #ffd177;background:#31302a}input{grid-column:1/3;width:100%;accent-color:#65d6be}button{font:inherit;padding:.45rem .8rem;cursor:pointer}#status{color:#abdccb}</style>
+<h1>Plate parameters</h1>
+<label id="bore-label">Bore <output id="bore-value"></output><input id="bore" aria-label="Bore" type="range" min="1" max="30" disabled></label>
+<label id="thickness-label">Thickness <output id="thickness-value"></output><input id="thickness" aria-label="Thickness" type="range" min="1" max="30" disabled></label>
+<button id="bind" hidden disabled>Bind this view</button>
+<p id="status" role="status">Reading saved plate…</p><p id="mark" role="status"></p>
+<script type="module" src="/plate.js"></script></html>
