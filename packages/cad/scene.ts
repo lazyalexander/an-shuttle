@@ -3,12 +3,12 @@ export const parts = ['base', 'rail', 'fixedJaw', 'movingJaw'] as const;
 export type Part = typeof parts[number];
 export interface Material { finish: string; color: string }
 export interface Camera { yaw: number; elevation: number }
-export interface Scene {
-  gap: number;
+export interface Appearance {
   camera?: Camera;
   light?: number;
-  materials: Partial<Record<Part, Material>>;
+  materials: Partial<Record<string, Material>>;
 }
+export interface Scene extends Appearance {gap:number}
 export type Vec = [number, number, number];
 export const defaultCamera: Camera = {yaw: 38, elevation: 28};
 
@@ -26,7 +26,11 @@ export function material(v: unknown): v is Material {
 }
 export function snapshot(input: unknown): Scene {
   if (!record(input) || !bounded(input.gap, 2, 48) || !record(input.materials)) throw Error('Invalid vise geometry or material map');
-  const scene: Scene = {gap: input.gap, materials: {}};
+  return {gap:input.gap, ...readAppearance(input, parts)};
+}
+export function readAppearance(input: Record<string,unknown>, partIds: readonly string[]): Appearance {
+  if (!record(input.materials)) throw Error('Invalid material map');
+  const scene: Appearance = {materials:{}};
   if (input.camera !== undefined) {
     const c = input.camera;
     if (!record(c) || !bounded(c.yaw,-180,180) || !bounded(c.elevation,5,80)) throw Error('Invalid camera');
@@ -36,7 +40,7 @@ export function snapshot(input: unknown): Scene {
     if (!bounded(input.light,-180,180)) throw Error('Invalid light');
     scene.light = input.light;
   }
-  for (const part of parts) {
+  for (const part of partIds) {
     const m = input.materials[part];
     if (m === undefined) continue;
     if (!material(m)) throw Error('Invalid material for '+part);

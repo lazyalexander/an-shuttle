@@ -11,7 +11,7 @@ mi.set_variant("scalar_rgb")
 folder = Path(sys.argv[1])
 job = json.loads((folder / "scene.json").read_text())
 transform = mi.ScalarTransform4f
-focus = np.array([4, 0, 18])
+focus = np.array(job.get("focus", [4, 0, 18]))
 size = (960, 680)
 
 
@@ -65,12 +65,24 @@ def rgb(color):
 
 eye = direction(**job["camera"])
 sensor = {"type":"orthographic",
-          "to_world":transform().look_at(origin=focus+220*eye,target=focus,up=[0,0,1]) @ transform().scale(77.5),
+          "to_world":transform().look_at(origin=focus+220*eye,target=focus,up=[0,0,1]) @ transform().scale(job.get("width",155)/2),
           "film":{"type":"hdrfilm","width":size[0],"height":size[1],"pixel_format":"rgba",
                   "rfilter":{"type":"box"}}}
 scene = {"type":"scene","sensor":sensor}
 for index, solid in enumerate(job["solids"]):
-    if solid["shape"] == "box":
+    if solid["shape"] == "mesh":
+        path = folder / f"mesh-{index}.ply"
+        vertices, faces = solid["vertices"], solid["faces"]
+        with path.open("w") as f:
+            f.write(f"ply\nformat ascii 1.0\nelement vertex {len(vertices)}\n")
+            f.write("property float x\nproperty float y\nproperty float z\n")
+            f.write(f"element face {len(faces)}\nproperty list uchar int vertex_indices\nend_header\n")
+            for x,y,z in vertices:
+                f.write(f"{x} {y} {z}\n")
+            for a,b,c in faces:
+                f.write(f"3 {a} {b} {c}\n")
+        obj = {"type":"ply", "filename":str(path), "face_normals":True}
+    elif solid["shape"] == "box":
         obj = rounded_box(solid,index)
     else:
         axis = "xyz".index(solid["axis"])

@@ -22,7 +22,7 @@ def png(image):
     return buf.getvalue()
 
 
-root = ET.Element("image", version="0.0.3", w=str(beauty.width), h=str(beauty.height), name="Vise study")
+root = ET.Element("image", version="0.0.3", w=str(beauty.width), h=str(beauty.height), name=job.get("title", "Vise study"))
 stack = ET.SubElement(root, "stack")
 merged = Image.new("RGBA", beauty.size)
 with zipfile.ZipFile(folder / "painting.tmp", "w") as archive:

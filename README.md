@@ -25,6 +25,26 @@ The spool uses the provided camera and light. Omit the camera for the default th
 
 Mitsuba path traces the saved geometry on the CPU. A separate visibility pass assigns visible pixels to the base, hardware, fixed jaw and moving jaw. Every delivery checks that the four layers composite byte-for-byte to the transparent PNG. The standalone ORA contains the resolved scene recipe. For finer editing, set `CUT_SPOOL_BIN` to a local cutting-spool executable before starting the studio. **送交切割 spool** passes the absolute ORA path as one argument. Exit zero acknowledges delivery. Handoff is optional and CAD stays editable while the cutter runs. Each save gets its own folder under `paintings/`. Shuttle requests that local Krita open the document and also exposes a download. Set `KRITA_BIN` or `PYTHON_BIN` to override executable paths.
 
+## Swap the source CAD
+
+The second example is a three-spoke handwheel designed in OpenSCAD. It has five part groups and one editable shaft angle. Launch the same studio with the model directory:
+
+```sh
+npm run studio -- examples/cad-paint/handwheel
+```
+
+Set `PORT=4184` to run it alongside the vise. The browser owns the edit lock in conjunction with the studio server. OpenSCAD supplies the assembly geometry offline. The native OpenSCAD editor is outside this lock.
+
+![OpenSCAD handwheel](examples/cad-paint/sample/handwheel.png)
+
+[Five-layer handwheel ORA](examples/cad-paint/sample/handwheel.ora)
+
+- Edit `model.scad` for the solid geometry and the named part groups.
+- Edit `model.json` for part IDs, mask colors, supplied finishes, framing and the revolute joint. The neutral-angle meshes use the same world coordinates and pivot as OpenSCAD.
+- Rebuild `meshes.json` after geometry or part-ID changes with `python3 examples/cad-paint/export-scad.py examples/cad-paint/handwheel`. OpenSCAD is needed only for this export. Set `OPENSCAD_BIN` if the executable has a different path.
+
+The two demos share capture, locking, material negotiation, scene rendering, ORA delivery and cutting-spool handoff. Additional triangle-mesh assemblies with a single axis-aligned revolute joint can use the directory interface. A different native editor or another joint type needs its own integration.
+
 ## Workspaces
 
 | Workspace | Responsibility |
