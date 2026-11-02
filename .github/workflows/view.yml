@@ -24,10 +24,12 @@ jobs:
           path: |
             packages/*/dist
             examples/*/dist
-          key: ${{ runner.os }}-ts-${{ hashFiles('package-lock.json', '**/tsconfig*.json') }}-${{ hashFiles('packages/**/*.ts', 'examples/**/*.ts') }}
+            spools/*/dist
+          key: ${{ runner.os }}-ts-${{ hashFiles('package-lock.json', '**/tsconfig*.json') }}-${{ hashFiles('packages/**/*.ts', 'examples/**/*.ts', 'spools/**/*.ts') }}
           restore-keys: |
             ${{ runner.os }}-ts-${{ hashFiles('package-lock.json', '**/tsconfig*.json') }}-
       - run: npm run build
       - run: npm test
+      - run: python -B -m unittest discover -s spools/cad-paint/tests -v
       - name: Check two real Chrome tabs
         run: npm run test:browser

@@ -1,0 +1,55 @@
+name: Native CAD spool
+on:
+  pull_request:
+    paths:
+      - 'spools/cad-paint/**'
+      - 'packages/cad/shuttle.ts'
+      - '.github/scripts/qualify-painted-spool.py'
+      - '.github/workflows/loom-spool.yml'
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: lazyalexander/an-loom
+          ref: 69d86ffff1741460a921cb6d65ebb4fe43f441aa
+          path: integrations/loom
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: lazyalexander/an-agent
+          ref: 8de51e0f8768c8233bb138476b1fb58c303add69
+          path: integrations/host
+          persist-credentials: false
+      - uses: actions/cache@v4
+        id: native-tools
+        with:
+          path: integrations/bin
+          key: cad-native-tools-1-${{ runner.os }}-${{ runner.arch }}-69d86ff-8de51e0
+      - name: Build pinned Loom and host tools
+        if: steps.native-tools.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p integrations/bin
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/native-target"
+          (cd integrations/loom && cargo build --locked --bin an-loom)
+          (cd integrations/host && cargo build --locked --bin an-agent-host)
+          cp "$CARGO_TARGET_DIR/debug/an-loom" "$CARGO_TARGET_DIR/debug/an-agent-host" integrations/bin/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: spools/cad-paint/native-spool.toml
+      - name: Select the Python runtime and verify both accepted outputs
+        run: |
+          python -m venv --without-pip "$RUNNER_TEMP/paint-env"
+          python -c "import tomllib; print('\n'.join(d.rsplit('-',1)[0]+'=='+d.rsplit('-',1)[1] for d in tomllib.load(open('spools/cad-paint/native-spool.toml','rb'))['dependencies']))" > "$RUNNER_TEMP/paint-pins.txt"
+          python -m pip --python "$RUNNER_TEMP/paint-env" install --only-binary=:all: --no-compile -r "$RUNNER_TEMP/paint-pins.txt"
+          PATH="$PWD/integrations/bin:$PATH" "$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py
