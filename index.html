@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plate inspection · an-shuttle</title>
+<style>body{max-width:44rem;margin:8vh auto;padding:0 1.4rem;background:#17212b;color:#e6eef2;font:1rem/1.6 system-ui}button{font:inherit;padding:.45rem .8rem;margin:.2rem;border-radius:.4rem;cursor:pointer}output{display:block;margin-top:1.4rem;color:#9ce2cf}small{color:#c0cbd1}</style>
+<h1>Plate inspection</h1><p>Open two views of the same plate. In the one you want to use, choose <b>Bind this view</b>.</p>
+<button id="open">Open plate view</button><button id="check">Show saved check</button>
+<output id="result" role="status">No view bound.</output>
+<p><small>Demo rules flag thickness below 6 mm, then bore above 18 mm. Each accepted save records a finding, including when every view is closed.</small></p>
+<script type="module" src="/owner.mjs"></script></html>
