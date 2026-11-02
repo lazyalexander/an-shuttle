@@ -1,4 +1,4 @@
-import {isReceipt, isRecord, isViewTarget, type Command, type Operation, type Receipt} from './protocol.js';
+import {isReceipt, isRecord, isViewTarget, type Command, type Operation, type Receipt} from '@an-shuttle/view/protocol.js';
 import {readFinding, type Parameter} from './plate-data.js';
 
 interface Binding {

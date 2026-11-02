@@ -29,15 +29,20 @@ test('only the bound Chrome tab applies a current result', {timeout: 90_000}, as
     await a.locator('#bore-label[data-inspected]').waitFor();
     assert.equal(await b.locator('[data-inspected]').count(),0);
     assert.equal(await a.locator('#bore-label').evaluate(el=>getComputedStyle(el).outlineStyle),'solid');
-    await a.clock.install({time:new Date('2030-01-01T00:00:00Z')});
-    await a.clock.pauseAt(new Date('2030-01-01T00:00:01Z'));
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    await a.route('**/api/plate', async route => {
+      if (route.request().method() === 'PUT') await held;
+      await route.continue();
+    });
+    const saving = a.waitForRequest(request => request.method() === 'PUT');
     await a.getByRole('slider',{name:'Thickness'}).press('Home');
+    await saving;
     assert.equal(await a.locator('[data-inspected]').count(),0);
-    await a.clock.runFor(179);
     await check();
     await host.getByText(/revision 0.*view stale/).waitFor();
     const accepted=a.waitForResponse(r=>r.request().method()==='PUT' && r.ok());
-    await a.clock.runFor(1);
+    release();
     await accepted;
     await a.getByText('Saved revision 1').waitFor();
     await check();

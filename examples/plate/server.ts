@@ -1,5 +1,5 @@
 import {createServer} from 'node:http';
-import {isSourceVersion} from './protocol.js';
+import {isSourceVersion} from '@an-shuttle/view/protocol.js';
 import {hasDimensions, type Finding, type Plate} from './plate-data.js';
 import {readFile} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
@@ -47,7 +47,11 @@ export function serve(port = 4182) {
         if (req.url === '/api/plate') return end(200,'application/json',JSON.stringify(store.read()));
         if (req.url === '/api/check') return end(200,'application/json',JSON.stringify(store.check()));
         const file = files.get((req.url ?? '').replace(/\.mjs$/, '.js'));
-        if (file) return end(200,file.endsWith('html') ? 'text/html; charset=utf-8' : 'text/javascript',await readFile(new URL(file,import.meta.url)));
+        if (file) {
+          const location = ['view.js','protocol.js','trailing-edits.js'].includes(file)
+            ? new URL(import.meta.resolve('@an-shuttle/view/'+file)) : new URL(file,import.meta.url);
+          return end(200,file.endsWith('html') ? 'text/html; charset=utf-8' : 'text/javascript',await readFile(location));
+        }
       }
       if (req.method === 'PUT' && req.url === '/api/plate') {
         if (req.headers.origin !== 'http://'+expected || req.headers['content-type'] !== 'application/json') return end(403,'text/plain','Same-origin JSON required');

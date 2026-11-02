@@ -1,5 +1,5 @@
-import {parameterView} from './view.js';
-import {trailingEdits} from './trailing-edits.js';
+import {parameterView} from '@an-shuttle/view/view.js';
+import {trailingEdits} from '@an-shuttle/view/trailing-edits.js';
 import {parameters, readPlate, type Dimensions, type Parameter} from './plate-data.js';
 
 const el = (id: string) => document.getElementById(id)!;
@@ -34,7 +34,6 @@ async function start() {
   };
   const savedMessage = () => { el('status').textContent = 'Saved revision '+saved.revision; };
   const queue = trailingEdits<{ticket: number; values: Dimensions}>({
-    delay: 180,
     async save({ticket, values}) {
       const response = await fetch('/api/plate', {
         method: 'PUT', headers: {'Content-Type': 'application/json'},

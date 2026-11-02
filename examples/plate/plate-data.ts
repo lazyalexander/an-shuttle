@@ -1,4 +1,4 @@
-import {isRecord, isSourceVersion, type SourceVersion} from './protocol.js';
+import {isRecord, isSourceVersion, type SourceVersion} from '@an-shuttle/view/protocol.js';
 
 export const parameters = ['bore', 'thickness'] as const;
 export type Parameter = typeof parameters[number];

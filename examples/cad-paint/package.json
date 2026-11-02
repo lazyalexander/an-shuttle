@@ -1,0 +1,13 @@
+{
+  "name": "@an-shuttle/cad-paint",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./dist/*"
+  },
+  "dependencies": {
+    "@an-shuttle/cad": "0.0.0",
+    "@an-shuttle/krita": "0.0.0"
+  }
+}

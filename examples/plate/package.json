@@ -1,0 +1,12 @@
+{
+  "name": "@an-shuttle/plate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./dist/*"
+  },
+  "dependencies": {
+    "@an-shuttle/view": "0.0.0"
+  }
+}
