@@ -1,0 +1,71 @@
+name: Native CAD spool
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package-lock.json'
+      - '.github/workflows/loom-spool.yml'
+  pull_request:
+    paths:
+      - 'package-lock.json'
+      - 'examples/cad-paint/package.json'
+      - 'packages/cad/shuttle.ts'
+      - '.github/scripts/qualify-painted-spool.py'
+      - '.github/workflows/loom-spool.yml'
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_INCREMENTAL: '0'
+      LOOM_REV: 69d86ffff1741460a921cb6d65ebb4fe43f441aa
+      HOST_REV: 8de51e0f8768c8233bb138476b1fb58c303add69
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: native-tools
+        with:
+          path: integrations/bin
+          key: cad-native-tools-2-${{ runner.os }}-${{ runner.arch }}-${{ env.LOOM_REV }}-${{ env.HOST_REV }}
+      - uses: actions/checkout@v4
+        if: steps.native-tools.outputs.cache-hit != 'true'
+        with:
+          repository: lazyalexander/an-loom
+          ref: ${{ env.LOOM_REV }}
+          path: integrations/loom
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        if: steps.native-tools.outputs.cache-hit != 'true'
+        with:
+          repository: lazyalexander/an-agent
+          ref: ${{ env.HOST_REV }}
+          path: integrations/host
+          persist-credentials: false
+      - name: Build pinned Loom and host tools
+        if: steps.native-tools.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p integrations/bin
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/native-target"
+          (cd integrations/loom && cargo build --locked --bin an-loom)
+          (cd integrations/host && cargo build --locked --bin an-agent-host)
+          cp "$CARGO_TARGET_DIR/debug/an-loom" "$CARGO_TARGET_DIR/debug/an-agent-host" integrations/bin/
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: node_modules/@an-loom/cad-paint-spool/dist/requirements.txt
+      - name: Select the Python runtime and verify both accepted outputs
+        run: |
+          python -m venv --without-pip "$RUNNER_TEMP/paint-env"
+          requirements=$(node -p "require.resolve('@an-loom/cad-paint-spool/requirements')")
+          archive=$(node -p "require.resolve('@an-loom/cad-paint-spool/archive')")
+          python -m pip --python "$RUNNER_TEMP/paint-env" install --only-binary=:all: --no-compile -r "$requirements"
+          PATH="$PWD/integrations/bin:$PATH" "$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py "$archive"

@@ -1,3 +1,2 @@
-mitsuba==3.9.1
-numpy>=1.26,<3
-Pillow>=10,<13
+# Run npm ci first to install the pinned CAD release.
+-r ../../node_modules/@an-loom/cad-paint-spool/dist/requirements.txt

@@ -5,5 +5,13 @@
   "type": "module",
   "exports": {
     "./*": "./dist/*"
+  },
+  "peerDependencies": {
+    "@an-loom/cad-paint-spool": "0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@an-loom/cad-paint-spool": {
+      "optional": true
+    }
   }
 }

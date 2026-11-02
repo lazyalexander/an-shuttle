@@ -1,5 +1,14 @@
 name: View acceptance
-on: [pull_request]
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - 'package-lock.json'
+      - '**/tsconfig*.json'
+      - 'examples/**/*.ts'
+      - 'packages/**/*.ts'
+      - '.github/workflows/view.yml'
 permissions:
   contents: read
 jobs:
@@ -12,13 +21,13 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - run: npm ci --no-audit --no-fund
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: examples/cad-paint/requirements.txt
+          cache-dependency-path: node_modules/@an-loom/cad-paint-spool/dist/requirements.txt
       - run: python -m pip install -r examples/cad-paint/requirements.txt
-      - run: npm ci --no-audit --no-fund
       - uses: actions/cache@v4
         with:
           path: |

@@ -6,7 +6,8 @@ import {join} from 'node:path';
 
 export async function packPainting(folder: string) {
   const script=fileURLToPath(new URL('../pack.py',import.meta.url));
-  await promisify(execFile)(process.env.PYTHON_BIN ?? 'python3',[script,folder],{timeout:60_000});
+  const ora=fileURLToPath(import.meta.resolve('@an-loom/cad-paint-spool/ora'));
+  await promisify(execFile)(process.env.PYTHON_BIN ?? 'python3',[script,folder,ora],{timeout:60_000});
   return join(folder,'painting.ora');
 }
 export async function openInKrita(file: string) {
