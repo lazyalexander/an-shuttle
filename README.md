@@ -8,7 +8,7 @@ Shuttle connects an application view to a local workflow. The CAD painting examp
 
 ## CAD painting spool
 
-For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/69d86ffff1741460a921cb6d65ebb4fe43f441aa) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/8de51e0f8768c8233bb138476b1fb58c303add69) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. From a clean checkout, select a dedicated runtime once:
+For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/69d86ffff1741460a921cb6d65ebb4fe43f441aa) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/8de51e0f8768c8233bb138476b1fb58c303add69) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. Use release builds (`cargo build --release --locked --bin an-loom` and `cargo build --release --locked --bin an-agent-host` in the respective repositories) because the host hashes the selected Python environment. From a clean checkout, select a dedicated runtime once:
 
 ```sh
 npm ci

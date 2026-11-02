@@ -1,5 +1,5 @@
 import {execFile} from 'node:child_process';
-import {mkdir, rename, writeFile} from 'node:fs/promises';
+import {mkdir, realpath, rename, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
@@ -14,16 +14,28 @@ interface Result extends Identity { run: string; status: string; workspace?: {te
 interface Output { path: string; binding: {revision: string; content_sha256: string} }
 interface Inventory extends Identity { run: string; catalog: string; outputs: Output[] }
 
+type Host = <T>(...args: string[]) => Promise<T>;
+
 async function command<T>(binary: string, args: string[]): Promise<T> {
-  const {stdout} = await execute(binary, args, {encoding:'utf8', maxBuffer:4*1024*1024});
-  return JSON.parse(stdout) as T;
+  try {
+    const {stdout} = await execute(binary,args,{encoding:'utf8',maxBuffer:4*1024*1024});
+    return JSON.parse(stdout) as T;
+  } catch (error) {
+    if (error instanceof Error && 'stderr' in error && typeof error.stderr==='string' && error.stderr.trim())
+      throw new Error(args[0]+' — '+error.stderr.trim(),{cause:error});
+    throw error;
+  }
 }
 
-function host<T>(...args: string[]) {
-  return command<T>(process.env.AN_AGENT_HOST_BIN ?? 'an-agent-host', args);
+async function selectHost(): Promise<Host> {
+  const selected=process.env.AN_AGENT_HOST_BIN ?? 'an-agent-host';
+  // The supervisor binds its own executable. Resolve operator-provided launchers before the preview.
+  const located=selected.includes('/') ? selected : (await execute('/usr/bin/which',[selected])).stdout.trim();
+  const binary=await realpath(located);
+  return <T>(...args: string[]) => command<T>(binary,args);
 }
 
-async function approval(args: string[]) {
+async function approval(host: Host, args: string[]) {
   const preview = await host<{approval_sha256: string}>(...args);
   if (!/^[0-9a-f]{64}$/.test(preview.approval_sha256)) throw Error('Host returned an invalid approval digest');
   return [...args, '--approve', preview.approval_sha256];
@@ -33,8 +45,8 @@ function sameRun(record: Identity & {run: string}, loaded: Identity) {
   return record.instance === loaded.instance && record.release === loaded.release && record.run === run;
 }
 
-async function executeAttempt(instance: string, loaded: Identity, input: string, waiting: () => void) {
-  const args = await approval(['spool-supervisor','start',instance,run,input,'120']);
+async function executeAttempt(host: Host, instance: string, loaded: Identity, input: string, waiting: () => void) {
+  const args = await approval(host,['spool-supervisor','start',instance,run,input,'120']);
   // Once submitted the independent owner may outlive its CLI. Never replay the start.
   const result = await host<Result>(...args).catch(() => undefined);
   if (result && sameRun(result, loaded) && result.workspace?.termination_confirmed === true) return result.status;
@@ -58,14 +70,15 @@ export async function observeTermination(loaded: Identity, readStatus: () => Pro
 
 export async function renderWithHost(folder: string, input: string, candidate: string | null,
                                      runtime: string, waiting: () => void) {
+  const host = await selectHost();
   const archive = fileURLToPath(import.meta.resolve('@an-loom/cad-paint-spool/archive'));
   const delivery = join(folder,'native-release'), instance = join(folder,'instance');
   await command(process.env.AN_LOOM_BIN ?? 'an-loom',['export-native-spool-v3',archive,delivery]);
   const loaded = await host<Identity>('spool-load',delivery,instance,'--runtime',runtime);
-  if (candidate) await host(...await approval(['spool-kit-update',instance,'appearance.py',candidate]));
-  const status = await executeAttempt(instance,loaded,input,waiting);
+  if (candidate) await host(...await approval(host,['spool-kit-update',instance,'appearance.py',candidate]));
+  const status = await executeAttempt(host,instance,loaded,input,waiting);
   if (status !== 'succeeded') throw Error('Host paint attempt ended: '+status);
-  await host(...await approval(['spool-accept',instance,run]));
+  await host(...await approval(host,['spool-accept',instance,run]));
   const accepted = await host<Inventory>('spool-artifacts',instance,run);
   if (!sameRun(accepted, loaded) || accepted.outputs.length !== products.length)
     throw Error('Unexpected accepted painting inventory');

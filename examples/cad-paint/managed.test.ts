@@ -22,7 +22,7 @@ test('a browser save delivers only the native host’s accepted products', {time
   });
   model.listen(11434,'127.0.0.1');
   await once(model,'listening');
-  t.after(() => new Promise<void>(done => model.close(() => done())));
+  t.after(() => {model.closeAllConnections();return new Promise<void>(done => model.close(() => done()));});
   const browser = await chromium.launch({channel:'chrome'});
   t.after(() => browser.close());
 
@@ -90,8 +90,20 @@ test('a browser save delivers only the native host’s accepted products', {time
             assert.deepEqual(await product.body(),await readFile(join(output,attempt,name)));
           }
         }
+      } catch (error) {
+        const route = await fetch(origin+'/state').then(r => r.json()).catch(() => null);
+        console.error('CAD failure evidence',drawing.id,route?.revision,route?.locked,route?.message);
+        for (const attempt of await readdir(output).catch(() => [])) {
+          const result = await readFile(join(output,attempt,'instance/runs/paint/result.json'),'utf8').catch(() => null);
+          if (result) {
+            const record=JSON.parse(result);
+            console.error('host receipt',record.status,record.workspace?.termination_confirmed);
+          }
+        }
+        throw error;
       } finally {
         await context.close();
+        server.closeAllConnections();
         await new Promise<void>(done => server.close(() => done()));
       }
     });
