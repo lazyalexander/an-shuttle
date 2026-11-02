@@ -84,8 +84,11 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
         });
         paintingFile=file;
         artifact='/assets/'+basename(folder);
-        try {await open(file);message='素材已生成，已请求 Krita 打开';}
-        catch {message='素材已生成，可下载后在 Krita 中打开';}
+        message='素材已生成，可下载后在 Krita 中打开';
+        // The accepted pair is ready. A slow external app must not hold this CAD revision.
+        void Promise.resolve().then(()=>open(file)).then(()=>{
+          if (paintingFile===file) {message='素材已生成，已请求 Krita 打开';publish();}
+        },()=>{});
       } catch(error) {message='绘制失败 · '+(error instanceof Error?error.message:String(error)).slice(0,220);return send(500,'text/plain',message);}
       finally {locked=false;publish();}
       send(200,'application/json',JSON.stringify(state()));

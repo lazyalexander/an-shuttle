@@ -8,6 +8,8 @@ import {planKit} from '@an-loom/cad-paint-spool/agent';
 import {paintRequest} from '@an-shuttle/cad/shuttle.js';
 import {benchVise} from '@an-shuttle/cad/drawing.js';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {once} from 'node:events';
+import {studio} from './server.js';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -81,4 +83,35 @@ test('an uncertain supervisor waits for the original run without starting again'
   },async () => {waits++;});
   assert.equal(result,'failed'); assert.equal(waits,3);
   await assert.rejects(observeTermination(identity,async () => ({...pending,phase:'prepared'})),/did not reserve/);
+});
+
+test('a pending Krita launch cannot hold editing or replace a later revision’s status',{timeout:5000},async t=>{
+  const output=await mkdtemp(join(tmpdir(),'shuttle-slow-open-'));
+  let complete!:()=>void;
+  const firstOpen=new Promise<void>(done=>{complete=done;});
+  let launches=0;
+  const server=studio(0,{output,render:async(_scene,_rev,folder)=>join(folder,'painting.ora'),
+    open:async()=>{if (++launches===1) await firstOpen; else throw Error('app unavailable');}});
+  await once(server,'listening');
+  t.after(async()=>{
+    complete();server.closeAllConnections();
+    await new Promise<void>(done=>server.close(()=>done()));
+    await rm(output,{recursive:true,force:true});
+  });
+  const addr=server.address();assert.ok(addr&&typeof addr!=='string');
+  const url='http://127.0.0.1:'+addr.port;
+  const state=async()=> (await fetch(url+'/state')).json();
+  async function save(input:unknown) {
+    const result=await fetch(url+'/save',{method:'POST',headers:{origin:url,'content-type':'application/json'},
+      body:JSON.stringify(input)});
+    assert.equal(result.status,200);return result.json();
+  }
+  const first=await save(await state());
+  assert.equal(first.locked,false);assert.equal(launches,1);
+  const newer=await save(first);
+  assert.equal(newer.revision,2);assert.notEqual(first.artifact,newer.artifact);
+  complete();
+  const current=await state();
+  assert.equal(launches,2);assert.equal(current.message,newer.message);
+  assert.equal(current.artifact,newer.artifact);
 });
