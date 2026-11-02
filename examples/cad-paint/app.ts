@@ -66,7 +66,7 @@ function preview() {
   }
   byId('gapValue').textContent=parameterOf(s)+parameter.unit;
 }
-interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string}
+interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string}
 let state:State|null=null, posting=false, connected=false;
 const cut = document.querySelector<HTMLButtonElement>('#cut')!;
 function lock(){
@@ -77,6 +77,7 @@ function update(next:State) {
   if (drawing.id!==next.drawingId) {controls.disabled=true;location.reload();return;}
   if(!state || state.epoch!==next.epoch || state.revision!==next.revision) {
     input('gap').value=String(parameterOf(next.scene));
+    input('direction').value=next.direction ?? '';
     input('yaw').value=String(next.scene.camera?.yaw ?? defaultCamera.yaw);
     input('elevation').value=String(next.scene.camera?.elevation ?? defaultCamera.elevation);
     input('sendCamera').checked=!!next.scene.camera;
@@ -101,7 +102,7 @@ events.onmessage=e=>{connected=true;update(JSON.parse(e.data));};
 events.onerror=()=>{connected=false;lock();byId('status').textContent='连接中断 · CAD 已锁定';};
 byId('save').onclick=async()=>{
   if(controls.disabled || !state)return;
-  const request={epoch:state.epoch,revision:state.revision,scene:draft()};
+  const request={epoch:state.epoch,revision:state.revision,scene:draft(),direction:input('direction').value};
   posting=true;lock();byId('error').textContent='';
   try{
     const reply=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});

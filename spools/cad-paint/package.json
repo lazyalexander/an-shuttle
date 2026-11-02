@@ -1,0 +1,7 @@
+{
+  "name": "@an-shuttle/cad-paint-spool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {"./agent": "./dist/agent.js", "./entry": "./silk/main.py"}
+}

@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@an-shuttle/cad": "0.0.0",
-    "@an-shuttle/krita": "0.0.0"
+    "@an-shuttle/krita": "0.0.0",
+    "@an-shuttle/cad-paint-spool": "0.1.0"
   }
 }

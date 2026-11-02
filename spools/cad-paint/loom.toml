@@ -1,0 +1,5 @@
+schema_version = 1
+name = "cad-paint"
+version = "0.1.0"
+description = "Render a frozen CAD request into a transparent PNG and visible-part OpenRaster layers."
+include = ["loom.toml", "native-spool.toml", "AGENTS.md", "README.md", "agent.ts", "silk", "kit", "tests/test_contract.py"]

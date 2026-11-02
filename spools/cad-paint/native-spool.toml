@@ -1,0 +1,16 @@
+schema = "an-native-spool-v1"
+runtime = "macos-native-python-v1"
+entry = "silk/main.py"
+silk = ["silk/main.py", "silk/render.py", "silk/ora.py"]
+kit = ["kit/appearance.py"]
+editable = ["kit/appearance.py"]
+inputs = ["request.json"]
+outputs = ["painting.ora", "beauty.png"]
+binary_outputs = ["painting.ora", "beauty.png"]
+capabilities = ["read-input", "write-declared-outputs"]
+dependencies = ["drjit-1.5.0", "mitsuba-3.9.1", "numpy-2.3.5", "pillow-12.3.0"]
+acceptance = ["python3 -B -m unittest discover -s tests -v"]
+
+[events]
+consumes = []
+produces = ["artifact.accepted"]

@@ -45,6 +45,12 @@ Set `PORT=4184` to run it alongside the vise. The browser owns the edit lock in 
 
 The two demos share capture, locking, material negotiation, scene rendering, ORA delivery and cutting-spool handoff. Additional triangle-mesh assemblies with a single axis-aligned revolute joint can use the directory interface. A different native editor or another joint type needs its own integration.
 
+## Loom package and Shuttle boundary
+
+A CAD save carries an intent, a fixed document revision, its observations and optional operator direction through `packages/cad/shuttle.ts`. The studio holds the CAD lock and hands that message to the domain agent. It gives the model the missing part labels, the existing finishes and the direction. With complete materials it can start the baseline directly.
+
+The source package is [spools/cad-paint](spools/cad-paint). Its agent proposes a private `kit/appearance.py` for this attempt. Its read-only silk owns the render, PNG/ORA shape and pixel reconstruction. The resulting document records the input and selected kit digests. The host owns execution, custody, CAD unlock and separately requested external app actions. Further part cutting is a new attempt with its own input.
+
 ## Workspaces
 
 | Workspace | Responsibility |

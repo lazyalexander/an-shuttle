@@ -19,11 +19,12 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
   const epoch=randomUUID();
   let revision=0, locked=false;
   let scene:SavedDrawing={...parameterInput(drawing.parameter.initial,drawing),camera:defaultCamera,materials:drawing.materials};
+  let direction='';
   let message='就绪', artifact:string|null=null;
   let paintingFile: string|null = null;
   let cutStatus: 'ready'|'sending'|'sent' = 'ready';
   const clients=new Set<ServerResponse>();
-  const state=()=>({epoch,revision,locked,drawingId:drawing.id,scene,message,artifact,canCut:!!cut,cutStatus});
+  const state=()=>({epoch,revision,locked,drawingId:drawing.id,scene,direction,message,artifact,canCut:!!cut,cutStatus});
   function publish() {
     for(const client of clients) client.write('data: '+JSON.stringify(state())+'\n\n');
   }
@@ -71,11 +72,14 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
       }
       if(locked || input.epoch!==epoch || input.revision!==revision) return send(409,'text/plain','CAD locked or revision changed');
       const frozen=saveDrawing(input.scene,drawing);
+      const nextDirection=input.direction ?? '';
+      if(typeof nextDirection!=='string' || nextDirection.length>500) return send(400,'text/plain','Invalid painting direction');
+      direction=nextDirection;
       locked=true; scene=frozen; revision++; artifact=null; paintingFile=null; cutStatus='ready'; message='CAD 已锁定 · 正在绘制';publish();
       try {
         await mkdir(output,{recursive:true});
         const folder=await mkdtemp(join(output,'drawing-'));
-        const file=await render(frozen,revision,folder,drawing);
+        const file=await render(frozen,revision,folder,drawing,epoch,direction);
         paintingFile=file;
         artifact='/assets/'+basename(folder);
         try {await open(file);message='素材已生成，已请求 Krita 打开';}
