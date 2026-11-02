@@ -47,9 +47,13 @@ function preview() {
   }
   byId('gapValue').textContent=s.gap+' mm';
 }
-interface State {epoch:string;revision:number;scene:Scene;locked:boolean;artifact:string|null;message:string}
+interface State {epoch:string;revision:number;scene:Scene;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string}
 let state:State|null=null, posting=false, connected=false;
-function lock(){controls.disabled=posting||!connected||!state||state.locked;}
+const cut = document.querySelector<HTMLButtonElement>('#cut')!;
+function lock(){
+  controls.disabled=posting||!connected||!state||state.locked;
+  cut.disabled=controls.disabled||state?.cutStatus!=='ready';
+}
 function update(next:State) {
   if(!state || state.epoch!==next.epoch || state.revision!==next.revision) {
     input('gap').value=String(next.scene.gap);
@@ -66,6 +70,8 @@ function update(next:State) {
   }
   state=next;lock();byId('status').textContent=next.message;byId('version').textContent='CAD · 修订 '+next.revision;
   const link=document.querySelector<HTMLAnchorElement>('#download')!;
+  cut.hidden=!next.artifact||!next.canCut;
+  cut.textContent=next.cutStatus==='sent'?'已送交切割 spool':next.cutStatus==='sending'?'正在送交…':'送交切割 spool';
   link.hidden=!next.artifact;byId('delivery').hidden=!next.artifact;
   if(next.artifact){link.href=next.artifact+'/painting.ora';document.querySelector<HTMLImageElement>('#asset')!.src=next.artifact+'/beauty.png';}
 }
@@ -83,4 +89,16 @@ byId('save').onclick=async()=>{
     // The event stream owns shared state across all open CAD windows.
   }catch(error){byId('error').textContent=String(error);}
   finally{posting=false;lock();}
+};
+
+cut.onclick=async()=>{
+  if (cut.disabled || !state?.artifact) return;
+  cut.disabled=true;
+  byId('error').textContent='';
+  try {
+    const reply=await fetch('/cut',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({epoch:state.epoch,artifact:state.artifact})});
+    if (!reply.ok) throw Error(await reply.text());
+  } catch(error) {byId('error').textContent=String(error);}
+  finally {lock();}
 };

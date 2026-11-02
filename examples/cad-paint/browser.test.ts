@@ -12,10 +12,11 @@ test('saving freezes every CAD control across tabs, including a newly opened vie
   let fail!:()=>void;
   const held=new Promise<void>(resolve=>{fail=resolve;});
   let jobs=0, opens=0;
+  const deliveries:string[]=[];
   const server=studio(0,{output,render:async(_scene,_revision,folder)=>{
     if (++jobs===1) {await held;throw Error('test render failed');}
     return join(folder,'painting.ora');
-  },open:async()=>{opens++;}});
+  },open:async()=>{opens++;},cut:async file=>{deliveries.push(file);}});
   await once(server,'listening');
   t.after(async()=>{fail();await new Promise<void>(r=>server.close(()=>r()));await rm(output,{recursive:true,force:true});});
   const addr=server.address();
@@ -41,6 +42,12 @@ test('saving freezes every CAD control across tabs, including a newly opened vie
     assert.equal((await post(original)).status(),409);
     await b.locator('#save').click();
     await c.locator('#download').waitFor();
+    await c.locator('#cut').click();
+    await a.getByText('已送交切割 spool').waitFor();
+    assert.equal(deliveries.length,1);
+    assert.ok(deliveries[0].startsWith(output));
+    assert.ok(deliveries[0].endsWith('/painting.ora'));
+    await a.locator('#controls:enabled').waitFor();
     assert.equal(jobs,2);assert.equal(opens,1);
   }finally{fail();await browser.close();}
 });
