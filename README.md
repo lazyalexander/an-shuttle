@@ -8,22 +8,25 @@ Shuttle connects an application view to a local workflow. The CAD painting examp
 
 ## CAD painting spool
 
-Install Node 22+, Python 3.11 or 3.12, and Krita. From the repository root:
+For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/69d86ffff1741460a921cb6d65ebb4fe43f441aa) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/8de51e0f8768c8233bb138476b1fb58c303add69) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. From a clean checkout, select a dedicated runtime once:
 
 ```sh
 npm ci
 npm run build
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install -r examples/cad-paint/requirements.txt
+python3 -m venv --without-pip .venv
+python3 -m pip --python .venv install --only-binary=:all: --no-compile -r examples/cad-paint/requirements.txt
+.venv/bin/python -B examples/cad-paint/prepare-runtime.py "$(node -p "require.resolve('@an-loom/cad-paint-spool/manifest')")" .venv/paint-runtime.json
+export CAD_PAINT_RUNTIME="$PWD/.venv/paint-runtime.json"
 npm run studio
 ```
 
-Visit http://127.0.0.1:4183. Adjust the jaw opening, camera and finishes. Click **保存并绘制**. The submitting CAD window freezes immediately. The server locks the saved revision before awaiting any work, broadcasts the lock to every connected CAD window and rejects concurrent or stale saves. A disconnected window stays disabled until it reconnects. Success or failure releases the lock.
+Visit http://127.0.0.1:4183. Adjust the jaw opening, camera and finishes. Click **保存并绘制**. The submitting CAD window freezes immediately. The server locks the saved revision before awaiting any work, broadcasts the lock to every connected CAD window and rejects concurrent or stale saves. A disconnected window stays disabled until it reconnects. The studio publishes both accepted artifacts on success. A confirmed terminal failure releases the lock with no download. If the waiting CLI loses its result, the studio keeps the lock and checks the same supervised run for termination.
 
 The spool uses the provided camera and light. Omit the camera for the default three-quarter view, or omit the light for a random azimuth. Assign all four finishes to render offline. To ask a model for missing finishes, start local Ollama with a downloaded model that supports structured JSON. Set `OLLAMA_MODEL` to its name (default `gemma4:e4b`). Model failures are reported in the CAD interface.
 
-Mitsuba path traces the saved geometry on the CPU. A separate visibility pass assigns visible pixels to the base, hardware, fixed jaw and moving jaw. Every delivery checks that the four layers composite byte-for-byte to the transparent PNG. The standalone ORA contains the resolved scene recipe. For finer editing, set `CUT_SPOOL_BIN` to a local cutting-spool executable before starting the studio. **送交切割 spool** passes the absolute ORA path as one argument. Exit zero acknowledges delivery. Handoff is optional and CAD stays editable while the cutter runs. Each save gets its own folder under `paintings/`. Shuttle requests that local Krita open the document and also exposes a download. Set `KRITA_BIN` or `PYTHON_BIN` to override executable paths.
+Mitsuba path traces the saved geometry on the CPU. A separate visibility pass assigns visible pixels to the base, hardware, fixed jaw and moving jaw. Every delivery checks that the four layers composite byte-for-byte to the transparent PNG. The standalone ORA contains the resolved scene recipe. For finer editing, set `CUT_SPOOL_BIN` to a local cutting-spool executable before starting the studio. **送交切割 spool** passes the absolute ORA path as one argument. Exit zero acknowledges delivery. Handoff is optional and CAD stays editable while the cutter runs. Each save gets its own folder under `paintings/`. Shuttle requests that local Krita open the document and also exposes a download. Set `KRITA_BIN` to select the local painting app.
+
+For the standalone renderer on Linux or macOS, install the same Python requirements in a virtual environment, activate it and explicitly run `npm run studio -- --standalone`. This mode executes the Python entry directly and supports `PYTHON_BIN`. An ordinary save always uses the managed profile.
 
 ## Swap the source CAD
 
@@ -49,7 +52,7 @@ The two demos share capture, locking, material negotiation, scene rendering, ORA
 
 A CAD save carries an intent, a fixed document revision, its observations and optional operator direction through `packages/cad/shuttle.ts`. The studio holds the CAD lock and hands that message to the domain agent. It gives the model the missing part labels, the existing finishes and the direction. With complete materials it can start the baseline directly.
 
-The [CAD painting reference package in Loom](https://github.com/lazyalexander/an-loom/tree/821176910ceba06fa5fa0b6036d7f4d09291c2d1/examples/cad-paint) owns the domain source. `npm ci` installs v0.1.0 from an immutable commit URL and verifies the distribution against the integrity in `package-lock.json`. Both CAD models use this package. The macOS acceptance exports the exact Loom archive included in it. Its agent proposes a private `kit/appearance.py` for this attempt. Its read-only silk owns the render, PNG/ORA shape and pixel reconstruction. The resulting document records the input and selected kit digests. The studio currently runs the installed Python entry directly, holds the CAD lock and requests the local app handoff. The separate macOS check runs the packaged spool under an-agent-host and retrieves both accepted outputs. Further part cutting is a new attempt with its own input.
+The [CAD painting reference package in Loom](https://github.com/lazyalexander/an-loom/tree/821176910ceba06fa5fa0b6036d7f4d09291c2d1/examples/cad-paint) owns the domain source. `npm ci` installs v0.1.0 from an immutable commit URL and verifies the distribution against the integrity in `package-lock.json`. Both CAD models use this package. The macOS acceptance exports the exact Loom archive included in it. Its agent proposes a private `kit/appearance.py` for this attempt. Its read-only silk owns the render, PNG/ORA shape and pixel reconstruction. The resulting document records the input and selected kit digests. For each managed save, the studio exports the pinned archive into a fresh native instance. It applies an appearance kit only when materials are missing. The host supervises one run, accepts the outputs and checks out the two fixed revisions in its catalog. The studio records this inventory in `accepted.json` and makes the ORA visible after both checkouts. Each attempt retains its `saved.json`, `request.json` and instance for inspection. For a lost supervisor response, `an-agent-host spool-status <attempt>/instance paint` inspects the same attempt. The macOS acceptance exercises this path through two browser tabs. Further part cutting is a new attempt with its own input.
 
 ## Workspaces
 

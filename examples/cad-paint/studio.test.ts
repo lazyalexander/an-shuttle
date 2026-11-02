@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parts,snapshot,type Part} from '@an-shuttle/cad/scene.js';
-import {paint} from './spool.js';
+import {paintStandalone} from './spool.js';
 import {packPainting} from '@an-shuttle/krita/document.js';
 import {planKit} from '@an-loom/cad-paint-spool/agent';
 import {paintRequest} from '@an-shuttle/cad/shuttle.js';
@@ -35,7 +35,7 @@ test('closed geometry can be rendered and delivered without a model when every f
   const folder=await mkdtemp(join(tmpdir(),'shuttle-render-'));
   t.after(()=>rm(folder,{recursive:true,force:true}));
   const materials=Object.fromEntries(parts.map(p=>[p,steel])) as Record<Part,typeof steel>;
-  const file=await paint({gap:12,materials,camera:{yaw:40,elevation:30},light:60},1,folder);
+  const file=await paintStandalone({gap:12,materials,camera:{yaw:40,elevation:30},light:60},1,folder);
   assert.equal(await packPainting(folder),file);
   assert.equal((await readFile(file)).subarray(0,2).toString(),'PK');
   const job=JSON.parse(await readFile(join(folder,'scene.json'),'utf8'));
