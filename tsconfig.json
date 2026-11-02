@@ -15,9 +15,6 @@
     },
     {
       "path": "examples/cad-paint"
-    },
-    {
-      "path": "spools/cad-paint"
     }
   ]
 }

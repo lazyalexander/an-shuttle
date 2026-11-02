@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {promisify} from 'node:util';
 import {benchVise,type Model,type SavedDrawing} from '@an-shuttle/cad/drawing.js';
 import {paintRequest} from '@an-shuttle/cad/shuttle.js';
-import {instructions, materialSchema, planKit, type MaterialBrief} from '@an-shuttle/cad-paint-spool/agent';
+import {instructions, materialSchema, planKit, type MaterialBrief} from '@an-loom/cad-paint-spool/agent';
 
 async function ollama(brief:MaterialBrief, model:string):Promise<unknown> {
   const parts=Object.keys(brief.missing);
@@ -30,7 +30,7 @@ export async function paint(scene:SavedDrawing, revision:number, folder:string, 
   const missing=Object.fromEntries(Object.entries(request.parts).filter(([p])=>!request.scene.materials[p])
     .map(([p,spec])=>[p,{label:spec.label}]));
   const candidate=await planKit({...request.context,supplied:request.scene.materials,missing},brief=>ollama(brief,model));
-  const entry=fileURLToPath(import.meta.resolve('@an-shuttle/cad-paint-spool/entry'));
+  const entry=fileURLToPath(import.meta.resolve('@an-loom/cad-paint-spool/entry'));
   const silk=dirname(entry), kit=join(root,'kit');
   await mkdir(kit);
   if (candidate===null) await copyFile(join(silk,'../kit/appearance.py'),join(kit,'appearance.py'));

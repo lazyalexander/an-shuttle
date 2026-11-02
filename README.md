@@ -49,7 +49,7 @@ The two demos share capture, locking, material negotiation, scene rendering, ORA
 
 A CAD save carries an intent, a fixed document revision, its observations and optional operator direction through `packages/cad/shuttle.ts`. The studio holds the CAD lock and hands that message to the domain agent. It gives the model the missing part labels, the existing finishes and the direction. With complete materials it can start the baseline directly.
 
-The source package is [spools/cad-paint](spools/cad-paint). Its agent proposes a private `kit/appearance.py` for this attempt. Its read-only silk owns the render, PNG/ORA shape and pixel reconstruction. The resulting document records the input and selected kit digests. The host owns execution, custody, CAD unlock and separately requested external app actions. Further part cutting is a new attempt with its own input.
+The [CAD painting reference package in Loom](https://github.com/lazyalexander/an-loom/tree/821176910ceba06fa5fa0b6036d7f4d09291c2d1/examples/cad-paint) owns the domain source. `npm ci` installs v0.1.0 from an immutable commit URL and verifies the distribution against the integrity in `package-lock.json`. Both CAD models use this package. The macOS acceptance exports the exact Loom archive included in it. Its agent proposes a private `kit/appearance.py` for this attempt. Its read-only silk owns the render, PNG/ORA shape and pixel reconstruction. The resulting document records the input and selected kit digests. The studio currently runs the installed Python entry directly, holds the CAD lock and requests the local app handoff. The separate macOS check runs the packaged spool under an-agent-host and retrieves both accepted outputs. Further part cutting is a new attempt with its own input.
 
 ## Workspaces
 
@@ -57,8 +57,8 @@ The source package is [spools/cad-paint](spools/cad-paint). Its agent proposes a
 | --- | --- |
 | `packages/view` | View binding, revision checks and serialized edits |
 | `packages/cad` | CAD snapshot validation, part identifiers and vise geometry |
-| `packages/krita` | Packaging paint layers and opening a local document |
-| `examples/cad-paint` | Web CAD, lock owner, material negotiation and rendering spool |
+| `packages/krita` | Opening a local document and providing the compatibility packing entry |
+| `examples/cad-paint` | Web CAD, lock owner and pinned painting-spool client |
 | `examples/plate` | Minimal plate editor demonstrating a bound view |
 
 ## Plate view

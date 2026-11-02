@@ -12,24 +12,22 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - run: npm ci --no-audit --no-fund
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: examples/cad-paint/requirements.txt
+          cache-dependency-path: package-lock.json
       - run: python -m pip install -r examples/cad-paint/requirements.txt
-      - run: npm ci --no-audit --no-fund
       - uses: actions/cache@v4
         with:
           path: |
             packages/*/dist
             examples/*/dist
-            spools/*/dist
-          key: ${{ runner.os }}-ts-${{ hashFiles('package-lock.json', '**/tsconfig*.json') }}-${{ hashFiles('packages/**/*.ts', 'examples/**/*.ts', 'spools/**/*.ts') }}
+          key: ${{ runner.os }}-ts-${{ hashFiles('package-lock.json', '**/tsconfig*.json') }}-${{ hashFiles('packages/**/*.ts', 'examples/**/*.ts') }}
           restore-keys: |
             ${{ runner.os }}-ts-${{ hashFiles('package-lock.json', '**/tsconfig*.json') }}-
       - run: npm run build
       - run: npm test
-      - run: python -B -m unittest discover -s spools/cad-paint/tests -v
       - name: Check two real Chrome tabs
         run: npm run test:browser

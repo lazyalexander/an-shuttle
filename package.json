@@ -19,7 +19,6 @@
   },
   "workspaces": [
     "packages/*",
-    "examples/*",
-    "spools/*"
+    "examples/*"
   ]
 }

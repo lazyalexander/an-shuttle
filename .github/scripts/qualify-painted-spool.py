@@ -7,6 +7,7 @@ import site
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+import tarfile
 import tomllib
 from xml.etree import ElementTree
 from zipfile import ZipFile
@@ -28,9 +29,12 @@ def digest(path):
     return sha256(path.read_bytes()).hexdigest()
 
 
-def qualify(project, work):
-    archive = call("an-loom", "pack", project)["archive"]
+def qualify(archive, work):
     call("an-loom", "verify", archive)
+    project = work / "project"
+    project.mkdir()
+    with tarfile.open(archive) as release:
+        release.extractall(project, filter="data")
     delivery = work/"delivery"
     call("an-loom", "export-native-spool-v3", archive, delivery)
     contract = tomllib.loads((project/"native-spool.toml").read_text())
@@ -81,4 +85,4 @@ def qualify(project, work):
 
 if __name__ == "__main__":
     with TemporaryDirectory() as tmp:
-        qualify(Path("spools/cad-paint").resolve(),Path(tmp).resolve())
+        qualify(Path(sys.argv[1]).resolve(strict=True), Path(tmp).resolve())
