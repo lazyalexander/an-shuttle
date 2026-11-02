@@ -16,7 +16,7 @@ from PIL import Image
 
 def call(*args):
     result = subprocess.run(list(map(str,args)), check=True, stdout=subprocess.PIPE, text=True)
-    return json.loads(result.stdout)
+    return json.loads(result.stdout) if result.stdout.strip() else None
 
 
 def approved(*args):
@@ -65,7 +65,7 @@ def qualify(project, work):
     approved(host,"spool-accept",instance,"paint")
     for name in ("painting.ora","beauty.png"):
         binding = call(host,"spool-artifacts",instance,"paint","--output",name)
-        revision = binding["outputs"][0]["binding"]["revision"]
+        revision = binding["output"]["binding"]["revision"]
         call(host,"artifact-checkout",binding["catalog"],revision,work/name)
     with ZipFile(work/"painting.ora") as document:
         scene = json.loads(document.read("data/scene.json"))
