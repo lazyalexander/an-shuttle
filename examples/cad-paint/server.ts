@@ -10,19 +10,20 @@ const cutExecutable = process.env.CUT_SPOOL_BIN;
 const configuredCut = cutExecutable
   ? (file: string) => promisify(execFile)(cutExecutable, [file], {timeout: 120_000}).then(() => {})
   : null;
-import {defaultCamera, snapshot, type Scene} from '@an-shuttle/cad/scene.js';
+import {defaultCamera} from '@an-shuttle/cad/scene.js';
+import {benchVise,parameterInput,saveDrawing,type Model,type MeshDrawing,type SavedDrawing} from '@an-shuttle/cad/drawing.js';
 import {openInKrita} from '@an-shuttle/krita/document.js';
 import {paint} from './spool.js';
 
-export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut}={}) {
+export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model}={}) {
   const epoch=randomUUID();
   let revision=0, locked=false;
-  let scene:Scene={gap:18,camera:defaultCamera,materials:{rail:{finish:'ground steel',color:'#bdc9cb'}}};
+  let scene:SavedDrawing={...parameterInput(drawing.parameter.initial,drawing),camera:defaultCamera,materials:drawing.materials};
   let message='就绪', artifact:string|null=null;
   let paintingFile: string|null = null;
   let cutStatus: 'ready'|'sending'|'sent' = 'ready';
   const clients=new Set<ServerResponse>();
-  const state=()=>({epoch,revision,locked,scene,message,artifact,canCut:!!cut,cutStatus});
+  const state=()=>({epoch,revision,locked,drawingId:drawing.id,scene,message,artifact,canCut:!!cut,cutStatus});
   function publish() {
     for(const client of clients) client.write('data: '+JSON.stringify(state())+'\n\n');
   }
@@ -36,12 +37,14 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
           res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store'});
           clients.add(res);res.write('data: '+JSON.stringify(state())+'\n\n');res.on('close',()=>clients.delete(res));return;
         }
+        if(url==='/model.json') return send(200,'application/json',JSON.stringify(drawing));
+        if(url==='/drawing.js') return send(200,'text/javascript',await readFile(new URL(import.meta.resolve('@an-shuttle/cad/drawing.js'))));
         if(url==='/state') return send(200,'application/json',JSON.stringify(state()));
         if(url==='/' || url==='/app.js' || url==='/scene.js') {
           const file=url==='/'?new URL('../index.html',import.meta.url):url==='/app.js'?new URL('app.js',import.meta.url):new URL(import.meta.resolve('@an-shuttle/cad/scene.js'));
           return send(200,url==='/'?'text/html; charset=utf-8':'text/javascript',await readFile(file));
         }
-        const match=/^\/assets\/(vise-[a-zA-Z0-9]+)\/(painting\.ora|beauty\.png)$/.exec(url);
+        const match=/^\/assets\/((?:vise|drawing)-[a-zA-Z0-9]+)\/(painting\.ora|beauty\.png)$/.exec(url);
         if(match && await stat(join(output,match[1],'painting.ora')).catch(()=>null))
           return send(200,match[2]==='beauty.png'?'image/png':'application/octet-stream',await readFile(join(output,match[1],match[2])));
       }
@@ -67,12 +70,12 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
         } finally {publish();}
       }
       if(locked || input.epoch!==epoch || input.revision!==revision) return send(409,'text/plain','CAD locked or revision changed');
-      const frozen=snapshot(input.scene);
+      const frozen=saveDrawing(input.scene,drawing);
       locked=true; scene=frozen; revision++; artifact=null; paintingFile=null; cutStatus='ready'; message='CAD 已锁定 · 正在绘制';publish();
       try {
         await mkdir(output,{recursive:true});
-        const folder=await mkdtemp(join(output,'vise-'));
-        const file=await render(frozen,revision,folder);
+        const folder=await mkdtemp(join(output,'drawing-'));
+        const file=await render(frozen,revision,folder,drawing);
         paintingFile=file;
         artifact='/assets/'+basename(folder);
         try {await open(file);message='素材已生成，已请求 Krita 打开';}
@@ -85,6 +88,24 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
   server.on('close',()=>{for(const client of clients)client.end();});
   return server.listen(port,'127.0.0.1');
 }
+export async function loadDrawing(folder:string): Promise<MeshDrawing> {
+  // Both files belong to the local CAD operator. HTTP requests cannot select a filesystem path.
+  const [settings, meshes] = await Promise.all(['model.json','meshes.json'].map(async file =>
+    JSON.parse(await readFile(resolve(folder,file),'utf8'))));
+  const model:MeshDrawing = {...settings, meshes};
+  const colors = new Set<string>();
+  for (const [id, part] of Object.entries(model.parts)) {
+    const color=part.color.toLowerCase();
+    if (!/^[a-z][a-z0-9_]*$/i.test(id) || !/^#[0-9a-f]{6}$/.test(color) ||
+        color==='#000000' || colors.has(color) || !model.meshes[id]?.faces.length)
+      throw Error('Invalid CAD part or ownership color: '+id);
+    colors.add(color);
+  }
+  return model;
+}
 if(process.argv[1] && pathToFileURL(process.argv[1]).href===import.meta.url) {
-  studio().on('listening',()=>console.log('Open http://127.0.0.1:4183'));
+  const folder=process.argv[2];
+  const drawing=folder ? await loadDrawing(folder) : benchVise;
+  const port=Number(process.env.PORT ?? 4183);
+  studio(port,{drawing}).on('listening',()=>console.log('Open http://127.0.0.1:'+port));
 }

@@ -1,0 +1,23 @@
+{
+  "id": "handwheel",
+  "title": "三辐手轮",
+  "description": "A vintage laboratory crank stand with a cast pedestal, bearing, painted three-spoke wheel, crank pin and turned wooden grip.",
+  "focus": [0, 3, 47],
+  "width": 168,
+  "parameter": {"label": "手轮转角", "min": -180, "max": 180, "initial": -32, "unit": "°"},
+  "pivot": [0, 14, 58],
+  "axis": "y",
+  "parts": {
+    "stand": {"label":"机座","color":"#ff0000"},
+    "bearing": {"label":"轴承座与主轴","color":"#00ff00"},
+    "wheel": {"label":"三辐轮盘","color":"#0000ff","rotates":true},
+    "pin": {"label":"摇柄销","color":"#ffff00","rotates":true},
+    "grip": {"label":"握柄","color":"#00ffff","rotates":true}
+  },
+  "materials": {
+    "stand":{"finish":"petrol enamel","color":"#26605c"},
+    "bearing":{"finish":"brushed brass","color":"#b68c55"},
+    "wheel":{"finish":"oxblood enamel","color":"#963f32"},
+    "pin":{"finish":"ground steel","color":"#bdc9cb"}
+  }
+}

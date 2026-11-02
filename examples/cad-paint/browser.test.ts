@@ -5,7 +5,8 @@ import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {chromium} from 'playwright-core';
-import {studio} from './server.js';
+import {fileURLToPath} from 'node:url';
+import {loadDrawing,studio} from './server.js';
 
 test('saving freezes every CAD control across tabs, including a newly opened view', {timeout:60_000},async t=>{
   const output=await mkdtemp(join(tmpdir(),'shuttle-lock-'));
@@ -50,4 +51,42 @@ test('saving freezes every CAD control across tabs, including a newly opened vie
     await a.locator('#controls:enabled').waitFor();
     assert.equal(jobs,2);assert.equal(opens,1);
   }finally{fail();await browser.close();}
+});
+
+test('OpenSCAD handwheel uses the same editor, locks and file delivery', {timeout:90_000},async t=>{
+  const drawing=await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
+  const output=await mkdtemp(join(tmpdir(),'shuttle-handwheel-'));
+  const opened:string[]=[], cutFiles:string[]=[];
+  const server=studio(0,{output,drawing,open:async file=>{opened.push(file);},cut:async file=>{cutFiles.push(file);}});
+  await once(server,'listening');
+  t.after(async()=>{
+    await new Promise<void>(resolve=>server.close(()=>resolve()));
+    await rm(output,{recursive:true,force:true});
+  });
+  const addr=server.address();
+  assert.ok(addr && typeof addr!=='string');
+  const url='http://127.0.0.1:'+addr.port;
+  const browser=await chromium.launch({channel:'chrome'});
+  try {
+    const page=await browser.newPage();
+    await page.goto(url);
+    await page.locator('#controls:enabled').waitFor();
+    assert.equal(await page.locator('h1').innerText(),'三辐手轮 / CAD 绘画台');
+    assert.equal(await page.locator('#materials select').count(),5);
+    await page.getByRole('slider',{name:/手轮转角/}).press('Home');
+    await page.locator('#grip').selectOption('2');
+    await page.locator('#save').click();
+    await page.locator('#controls:disabled').waitFor();
+    await page.locator('#download').waitFor();
+    assert.equal(await page.locator('#download').getAttribute('download'),'handwheel.ora');
+    const state=await (await page.request.get(url+'/state')).json();
+    assert.equal(state.scene.value,-180);
+    const response=await page.request.get(url+state.artifact+'/painting.ora');
+    assert.equal(response.status(),200);
+    assert.equal((await response.body()).subarray(0,2).toString(),'PK');
+    await page.locator('#cut').click();
+    await page.getByText('已送交切割 spool').waitFor();
+    assert.equal(opened.length,1);
+    assert.deepEqual(cutFiles,opened);
+  }finally{await browser.close();}
 });
