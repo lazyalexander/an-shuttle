@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parts,snapshot,defaultCamera,type Part} from '@an-shuttle/cad/scene.js';
-import {recipe,paint} from './spool.js';
+import {parts,snapshot,type Part} from '@an-shuttle/cad/scene.js';
+import {paint} from './spool.js';
+import {planKit} from '@an-shuttle/cad-paint-spool/agent';
+import {paintRequest} from '@an-shuttle/cad/shuttle.js';
+import {benchVise} from '@an-shuttle/cad/drawing.js';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -11,14 +14,20 @@ test('freeze CAD input and request exactly the missing parts',async()=>{
   const input={gap:23,materials:{rail:{...steel}},light:0};
   const scene=snapshot(input);
   input.materials.rail.color='#000000';
-  const job=await recipe(scene,4,async missing=>{
-    assert.deepEqual(missing,['base','fixedJaw','movingJaw']);
-    return Object.fromEntries(missing.map(p=>[p,{...steel,metallic:0.8,roughness:0.25}]));
+  const request=paintRequest(benchVise,scene,'test-document',4,'matte wood');
+  assert.equal(request.source.revision,4);
+  assert.equal(request.scene.light,0);
+  assert.equal(request.scene.materials.rail?.color,steel.color);
+  const missing=Object.fromEntries(parts.filter(p=>!scene.materials[p]).map(p=>[p,{label:p}]));
+  const brief={...request.context,supplied:scene.materials,missing};
+  const candidate=await planKit(brief,async input=>{
+    assert.equal(input.direction,'matte wood');
+    assert.deepEqual(Object.keys(input.missing),['base','fixedJaw','movingJaw']);
+    return Object.fromEntries(Object.keys(input.missing).map(p=>[p,{...steel,metallic:0.8,roughness:0.25}]));
   });
-  assert.deepEqual(job.camera,defaultCamera);
-  assert.equal(job.light,0);
-  assert.equal(job.materials.rail.color,steel.color);
-  await assert.rejects(recipe(scene,4,async()=>({})),/Invalid generated material/);
+  assert.match(candidate!,/def missing_material/);
+  await assert.rejects(planKit(brief,async()=>({})),/Invalid generated material/);
+  await assert.rejects(planKit(brief,async()=>({rail:steel})),/Unexpected material/);
   assert.throws(()=>snapshot({...scene,gap:81}));
 });
 test('closed geometry can be rendered and delivered without a model when every finish is supplied',async t=>{
