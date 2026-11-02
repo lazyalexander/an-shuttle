@@ -5,7 +5,7 @@ interface Clock {
 }
 
 interface EditOptions<Edit> {
-  delay: number;
+  delay?: number;
   save(item: Edit): void | Promise<void>;
   failed(error: unknown, item: Edit): void;
   clock?: Clock;
@@ -13,7 +13,7 @@ interface EditOptions<Edit> {
 
 // The delay is an application choice. Invalidate the view synchronously
 // before enqueueing the save. At most one save is in flight.
-export function trailingEdits<Edit extends object>({delay, save, failed, clock = globalThis}: EditOptions<Edit>) {
+export function trailingEdits<Edit extends object>({delay = 0, save, failed, clock = globalThis}: EditOptions<Edit>) {
   let timer: Timer | null = null, pending: Edit | null = null;
   let busy = false, closed = false;
   async function drain() {
@@ -31,6 +31,7 @@ export function trailingEdits<Edit extends object>({delay, save, failed, clock =
     push(item: Edit) {
       if (closed) return;
       pending = item;
+      if (delay <= 0) { void drain(); return; }
       if (timer !== null) clock.clearTimeout(timer);
       timer = clock.setTimeout(() => { timer = null; void drain(); }, delay);
     },

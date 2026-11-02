@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {plateStore} from './server.js';
-import {parameterView} from './view.js';
-import {trailingEdits} from './trailing-edits.js';
-import {isReceipt, type Command, type Receipt, type ViewTarget} from './protocol.js';
+import {parameterView} from '@an-shuttle/view/view.js';
+import {trailingEdits} from '@an-shuttle/view/trailing-edits.js';
+import {isReceipt, type Command, type Receipt, type ViewTarget} from '@an-shuttle/view/protocol.js';
 
 async function exchange(port: MessagePort, command: unknown): Promise<Receipt> {
   const response = new Promise<unknown>(resolve => {

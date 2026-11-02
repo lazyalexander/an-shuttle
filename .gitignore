@@ -1,2 +1,7 @@
 node_modules/
 dist/
+
+/paintings/
+__pycache__/
+*.tsbuildinfo
+.venv/
