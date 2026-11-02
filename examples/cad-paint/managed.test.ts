@@ -46,6 +46,16 @@ test('a browser save delivers only the native host’s accepted products', {time
           for (const part of Object.keys(drawing.parts)) await first.locator('#'+part).selectOption('0');
         }
         const before = await (await first.request.get(origin+'/state')).json();
+        await first.evaluate(() => {
+          const controls=document.querySelector<HTMLFieldSetElement>('#controls')!;
+          document.querySelector('#save')!.addEventListener('click',() => {
+            performance.mark('paint-click');
+            const observer=new MutationObserver(() => {
+              if (controls.disabled) { performance.mark('paint-locked'); observer.disconnect(); }
+            });
+            observer.observe(controls,{attributes:true,attributeFilter:['disabled']});
+          },{capture:true,once:true});
+        });
         const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:260_000});
         await first.locator('#save').click();
         for (const page of [first,second]) {
@@ -57,6 +67,10 @@ test('a browser save delivers only the native host’s accepted products', {time
         const response = await pending;
         const detail = await response.text();
         assert.equal(response.status(),drawing===broken ? 500 : 200,detail);
+        const uiLockMs=await first.evaluate(() => performance.measure('paint lock','paint-click','paint-locked').duration);
+        const timing=response.request().timing();
+        console.log(JSON.stringify({drawing:drawing.id,clickToLockMs:uiLockMs,
+          saveResponseMs:timing.responseEnd,modelRequests:materials.length-clicks,http:response.status()}));
         await second.locator('#controls:enabled').waitFor();
         const state = await (await first.request.get(origin+'/state')).json();
         assert.equal(state.locked,false); assert.equal(state.revision,1); assert.equal(state.epoch,before.epoch);

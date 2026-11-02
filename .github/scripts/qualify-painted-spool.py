@@ -49,7 +49,12 @@ def check_outputs(attempt, parts):
             assert image.getchannel("A").getbbox()
             merged.alpha_composite(image)
         assert merged.tobytes() == png.tobytes()
-        print(scene["drawing"], len(layers), "accepted visible layers", png.size, flush=True)
+        print(json.dumps({"drawing": scene["drawing"], "revision": scene["source"]["revision"],
+                          "layers": len(layers), "size": png.size, "generated": scene["generated"],
+                          "request_sha256": scene["request_sha256"], "kit_sha256": scene["kit_sha256"],
+                          "host_release": accepted["release"],
+                          "outputs": {item["path"]: item["binding"]["revision"] for item in accepted["outputs"]}}),
+              flush=True)
 
 
 def qualify(archive, work):
@@ -77,6 +82,8 @@ def qualify(archive, work):
     status = call("an-agent-host", "spool-status", refused / "instance", "paint")
     assert status["termination_confirmed"] and status["execution_status"] == "failed"
     assert status["artifact_status"] == "not-accepted" and not (refused / "accepted.json").exists()
+    print(json.dumps({key: status[key] for key in ("phase", "execution_status", "termination_confirmed",
+                                                    "artifact_status")}), flush=True)
 
 
 if __name__ == "__main__":

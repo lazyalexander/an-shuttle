@@ -39,14 +39,20 @@ async function executeAttempt(instance: string, loaded: Identity, input: string,
   const result = await host<Result>(...args).catch(() => undefined);
   if (result && sameRun(result, loaded) && result.workspace?.termination_confirmed === true) return result.status;
   waiting();
+  return observeTermination(loaded,() => host<RunStatus>('spool-status',instance,run));
+}
+
+// Only evidence for this exact run can release the caller's CAD lock.
+export async function observeTermination(loaded: Identity, readStatus: () => Promise<RunStatus>,
+                                         wait = () => delay(2000)) {
   for (;;) {
-    const status = await host<RunStatus>('spool-status',instance,run).catch(() => undefined);
+    const status = await readStatus().catch(() => undefined);
     if (status && sameRun(status, loaded)) {
       if (status.termination_confirmed === true) return status.execution_status;
       // After the submitting CLI exits, a preview with no supervisor reservation admitted no worker.
       if (status.phase === 'prepared') throw Error('The host did not reserve this paint attempt');
     }
-    await delay(2000);
+    await wait();
   }
 }
 

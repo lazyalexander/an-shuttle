@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parts,snapshot,type Part} from '@an-shuttle/cad/scene.js';
 import {paintStandalone} from './spool.js';
+import {observeTermination} from './host.js';
 import {packPainting} from '@an-shuttle/krita/document.js';
 import {planKit} from '@an-loom/cad-paint-spool/agent';
 import {paintRequest} from '@an-shuttle/cad/shuttle.js';
@@ -66,4 +67,18 @@ test('handwheel rotates moving groups about its CAD shaft and preserves the stat
   }
   assert.throws(()=>saveDrawing({value:181,materials:{}},model));
   assert.throws(()=>saveDrawing({gap:18,materials:{}},model));
+});
+
+test('an uncertain supervisor waits for the original run without starting again',async () => {
+  const identity={instance:'selected',release:'fixed'};
+  const pending={...identity,run:'paint',phase:'running-or-unconfirmed',termination_confirmed:false,execution_status:''};
+  const failed={...pending,phase:'settled',termination_confirmed:true,execution_status:'failed'};
+  let reads=0, waits=0;
+  const outcomes=[{...failed,instance:'another'},pending,failed];
+  const result=await observeTermination(identity,async () => {
+    if (++reads===1) throw Error('temporary status loss');
+    return outcomes[reads-2];
+  },async () => {waits++;});
+  assert.equal(result,'failed'); assert.equal(waits,3);
+  await assert.rejects(observeTermination(identity,async () => ({...pending,phase:'prepared'})),/did not reserve/);
 });
