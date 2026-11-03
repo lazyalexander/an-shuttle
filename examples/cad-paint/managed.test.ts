@@ -41,6 +41,7 @@ test('a browser save delivers only the native host’s accepted products', {time
       assert.ok(addr && typeof addr!== 'string');
       const origin = 'http://127.0.0.1:'+addr.port;
       const context = await browser.newContext();
+      context.setDefaultTimeout(15_000);
       const clicks = materials.length;
       try {
         const [first,second] = await Promise.all([context.newPage(),context.newPage()]);
@@ -61,12 +62,16 @@ test('a browser save delivers only the native host’s accepted products', {time
           },{capture:true,once:true});
         });
         console.log('Submitting',fixture);
-        const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:260_000});
+        const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:130_000});
+        void pending.catch(() => {});
+        await first.bringToFront();
         await first.locator('#save').click();
+        console.log('Save clicked',fixture);
         for (const page of [first,second]) {
           await page.getByText('CAD 已锁定 · 正在绘制',{exact:true}).waitFor();
           assert.equal(await page.locator('input:enabled,select:enabled,button:enabled').count(),0);
         }
+        console.log('Both tabs locked',fixture);
         const duplicate = await second.request.post(origin+'/save',{headers:{Origin:origin},data:before});
         assert.equal(duplicate.status(),409);
         const response = await pending;

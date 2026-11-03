@@ -25,7 +25,7 @@ jobs:
       HOST_REV: 8de51e0f8768c8233bb138476b1fb58c303add69
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         id: native-tools
         with:
           path: integrations/bin
@@ -52,6 +52,11 @@ jobs:
           (cd integrations/loom && cargo build --locked --release --bin an-loom)
           (cd integrations/host && cargo build --locked --release --bin an-agent-host)
           cp "$CARGO_TARGET_DIR/release/an-loom" "$CARGO_TARGET_DIR/release/an-agent-host" integrations/bin/
+      - uses: actions/cache/save@v4
+        if: steps.native-tools.outputs.cache-hit != 'true'
+        with:
+          path: integrations/bin
+          key: ${{ steps.native-tools.outputs.cache-primary-key }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -92,5 +97,13 @@ jobs:
         env:
           CAD_PAINT_FIXTURE: incomplete
         run: node --test examples/cad-paint/dist/managed.test.js
+      - name: Inspect original fixture attempts on failure
+        if: failure()
+        run: |
+          for instance in "$CAD_PAINT_TEST_OUTPUT"/*/drawing-*/instance; do
+            [ -d "$instance" ] || continue
+            an-agent-host spool-status "$instance" paint || true
+            find "$instance/runs" -name stderr.txt -exec tail -c 1000 {} \;
+          done
       - name: Verify both accepted catalogs and the failure receipt
         run: '"$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTPUT"'
