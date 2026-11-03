@@ -72,32 +72,34 @@ test('a browser save delivers only the native host’s accepted products', {time
           assert.equal(await page.locator('input:enabled,select:enabled,button:enabled').count(),0);
         }
         console.log('Both tabs locked',fixture);
-        const duplicate = await second.request.post(origin+'/save',{headers:{Origin:origin},data:before});
-        assert.equal(duplicate.status(),409);
+        const duplicate = await fetch(origin+'/save',{method:'POST',headers:{origin,'content-type':'application/json'},
+          body:JSON.stringify(before),signal:AbortSignal.timeout(10_000)});
+        assert.equal(duplicate.status,409);
+        await duplicate.text();
         const response = await pending;
-        const detail = await response.text();
-        assert.equal(response.status(),drawing===broken ? 500 : 200,detail);
+        console.log('Save returned',fixture,response.status());
+        assert.equal(response.status(),drawing===broken ? 500 : 200);
         const uiLockMs=await first.evaluate(() => performance.measure('paint lock','paint-click','paint-locked').duration);
         const timing=response.request().timing();
         console.log(JSON.stringify({drawing:drawing.id,clickToLockMs:uiLockMs,
           saveResponseMs:timing.responseEnd,modelRequests:materials.length-clicks,http:response.status()}));
         await second.locator('#controls:enabled').waitFor();
-        const state = await (await first.request.get(origin+'/state')).json();
+        const state = await (await fetch(origin+'/state',{signal:AbortSignal.timeout(10_000)})).json();
         assert.equal(state.locked,false); assert.equal(state.revision,1); assert.equal(state.epoch,before.epoch);
         assert.equal(materials.length-clicks,drawing.id==='handwheel' ? 1 : 0);
         const [attempt] = await readdir(output);
         if (drawing===broken) {
           assert.equal(state.artifact,null); assert.deepEqual(opened,[]);
-          assert.match(detail,/Host paint attempt ended/);
+          assert.match(state.message,/Host paint attempt ended/);
           for (const name of ['painting.ora','beauty.png'])
-            assert.equal((await first.request.get(origin+'/assets/'+attempt+'/'+name)).status(),404);
+            assert.equal((await fetch(origin+'/assets/'+attempt+'/'+name,{signal:AbortSignal.timeout(10_000)})).status,404);
         } else {
           assert.equal(state.artifact,'/assets/'+attempt);
           assert.deepEqual(opened,[join(output,attempt,'painting.ora')]);
           for (const name of ['painting.ora','beauty.png']) {
-            const product = await first.request.get(origin+state.artifact+'/'+name);
-            assert.equal(product.status(),200);
-            assert.deepEqual(await product.body(),await readFile(join(output,attempt,name)));
+            const product = await fetch(origin+state.artifact+'/'+name,{signal:AbortSignal.timeout(10_000)});
+            assert.equal(product.status,200);
+            assert.deepEqual(Buffer.from(await product.arrayBuffer()),await readFile(join(output,attempt,name)));
           }
         }
       } catch (error) {
