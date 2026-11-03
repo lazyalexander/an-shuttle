@@ -7,6 +7,7 @@ import {join} from 'node:path';
 import {chromium} from 'playwright-core';
 import {fileURLToPath} from 'node:url';
 import {loadDrawing,studio} from './server.js';
+import {paintStandalone} from './spool.js';
 
 test('saving freezes every CAD control across tabs, including a newly opened view', {timeout:60_000},async t=>{
   const output=await mkdtemp(join(tmpdir(),'shuttle-lock-'));
@@ -57,7 +58,7 @@ test('OpenSCAD handwheel uses the same editor, locks and file delivery', {timeou
   const drawing=await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
   const output=await mkdtemp(join(tmpdir(),'shuttle-handwheel-'));
   const opened:string[]=[], cutFiles:string[]=[];
-  const server=studio(0,{output,drawing,open:async file=>{opened.push(file);},cut:async file=>{cutFiles.push(file);}});
+  const server=studio(0,{output,drawing,render:paintStandalone,open:async file=>{opened.push(file);},cut:async file=>{cutFiles.push(file);}});
   await once(server,'listening');
   t.after(async()=>{
     await new Promise<void>(resolve=>server.close(()=>resolve()));

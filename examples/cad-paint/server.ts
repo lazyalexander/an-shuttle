@@ -4,7 +4,7 @@ import {resolve,join,basename} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
-import {promisify} from 'node:util';
+import {parseArgs,promisify} from 'node:util';
 
 const cutExecutable = process.env.CUT_SPOOL_BIN;
 const configuredCut = cutExecutable
@@ -13,7 +13,7 @@ const configuredCut = cutExecutable
 import {defaultCamera} from '@an-shuttle/cad/scene.js';
 import {benchVise,parameterInput,saveDrawing,type Model,type MeshDrawing,type SavedDrawing} from '@an-shuttle/cad/drawing.js';
 import {openInKrita} from '@an-shuttle/krita/document.js';
-import {paint} from './spool.js';
+import {paint,paintStandalone} from './spool.js';
 
 export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model}={}) {
   const epoch=randomUUID();
@@ -79,11 +79,16 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
       try {
         await mkdir(output,{recursive:true});
         const folder=await mkdtemp(join(output,'drawing-'));
-        const file=await render(frozen,revision,folder,drawing,epoch,direction);
+        const file=await render(frozen,revision,folder,drawing,epoch,direction,()=>{
+          message='等待宿主确认绘制终止 · CAD 保持锁定';publish();
+        });
         paintingFile=file;
         artifact='/assets/'+basename(folder);
-        try {await open(file);message='素材已生成，已请求 Krita 打开';}
-        catch {message='素材已生成，可下载后在 Krita 中打开';}
+        message='素材已生成，可下载后在 Krita 中打开';
+        // The accepted pair is ready. A slow external app must not hold this CAD revision.
+        void Promise.resolve().then(()=>open(file)).then(()=>{
+          if (paintingFile===file) {message='素材已生成，已请求 Krita 打开';publish();}
+        },()=>{});
       } catch(error) {message='绘制失败 · '+(error instanceof Error?error.message:String(error)).slice(0,220);return send(500,'text/plain',message);}
       finally {locked=false;publish();}
       send(200,'application/json',JSON.stringify(state()));
@@ -108,8 +113,10 @@ export async function loadDrawing(folder:string): Promise<MeshDrawing> {
   return model;
 }
 if(process.argv[1] && pathToFileURL(process.argv[1]).href===import.meta.url) {
-  const folder=process.argv[2];
+  const {values,positionals}=parseArgs({options:{standalone:{type:'boolean'}},allowPositionals:true});
+  if(positionals.length>1) throw Error('Expected one optional CAD directory');
+  const [folder]=positionals;
   const drawing=folder ? await loadDrawing(folder) : benchVise;
   const port=Number(process.env.PORT ?? 4183);
-  studio(port,{drawing}).on('listening',()=>console.log('Open http://127.0.0.1:'+port));
+  studio(port,{drawing,render:values.standalone ? paintStandalone : paint}).on('listening',()=>console.log('Open http://127.0.0.1:'+port));
 }

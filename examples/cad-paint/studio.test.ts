@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parts,snapshot,type Part} from '@an-shuttle/cad/scene.js';
-import {paint} from './spool.js';
+import {paintStandalone} from './spool.js';
+import {observeTermination} from './host.js';
 import {packPainting} from '@an-shuttle/krita/document.js';
 import {planKit} from '@an-loom/cad-paint-spool/agent';
 import {paintRequest} from '@an-shuttle/cad/shuttle.js';
 import {benchVise} from '@an-shuttle/cad/drawing.js';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {once} from 'node:events';
+import {studio} from './server.js';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
@@ -35,7 +38,7 @@ test('closed geometry can be rendered and delivered without a model when every f
   const folder=await mkdtemp(join(tmpdir(),'shuttle-render-'));
   t.after(()=>rm(folder,{recursive:true,force:true}));
   const materials=Object.fromEntries(parts.map(p=>[p,steel])) as Record<Part,typeof steel>;
-  const file=await paint({gap:12,materials,camera:{yaw:40,elevation:30},light:60},1,folder);
+  const file=await paintStandalone({gap:12,materials,camera:{yaw:40,elevation:30},light:60},1,folder);
   assert.equal(await packPainting(folder),file);
   assert.equal((await readFile(file)).subarray(0,2).toString(),'PK');
   const job=JSON.parse(await readFile(join(folder,'scene.json'),'utf8'));
@@ -66,4 +69,49 @@ test('handwheel rotates moving groups about its CAD shaft and preserves the stat
   }
   assert.throws(()=>saveDrawing({value:181,materials:{}},model));
   assert.throws(()=>saveDrawing({gap:18,materials:{}},model));
+});
+
+test('an uncertain supervisor waits for the original run without starting again',async () => {
+  const identity={instance:'selected',release:'fixed'};
+  const pending={...identity,run:'paint',phase:'running-or-unconfirmed',termination_confirmed:false,execution_status:''};
+  const failed={...pending,phase:'settled',termination_confirmed:true,execution_status:'failed'};
+  let reads=0, waits=0;
+  const outcomes=[{...failed,instance:'another'},pending,failed];
+  const result=await observeTermination(identity,async () => {
+    if (++reads===1) throw Error('temporary status loss');
+    return outcomes[reads-2];
+  },async () => {waits++;});
+  assert.equal(result,'failed'); assert.equal(waits,3);
+  await assert.rejects(observeTermination(identity,async () => ({...pending,phase:'prepared'})),/did not reserve/);
+});
+
+test('a pending Krita launch cannot hold editing or replace a later revision’s status',{timeout:5000},async t=>{
+  const output=await mkdtemp(join(tmpdir(),'shuttle-slow-open-'));
+  let complete!:()=>void;
+  const firstOpen=new Promise<void>(done=>{complete=done;});
+  let launches=0;
+  const server=studio(0,{output,render:async(_scene,_rev,folder)=>join(folder,'painting.ora'),
+    open:async()=>{if (++launches===1) await firstOpen; else throw Error('app unavailable');}});
+  await once(server,'listening');
+  t.after(async()=>{
+    complete();server.closeAllConnections();
+    await new Promise<void>(done=>server.close(()=>done()));
+    await rm(output,{recursive:true,force:true});
+  });
+  const addr=server.address();assert.ok(addr&&typeof addr!=='string');
+  const url='http://127.0.0.1:'+addr.port;
+  const state=async()=> (await fetch(url+'/state')).json();
+  async function save(input:unknown) {
+    const result=await fetch(url+'/save',{method:'POST',headers:{origin:url,'content-type':'application/json'},
+      body:JSON.stringify(input)});
+    assert.equal(result.status,200);return result.json();
+  }
+  const first=await save(await state());
+  assert.equal(first.locked,false);assert.equal(launches,1);
+  const newer=await save(first);
+  assert.equal(newer.revision,2);assert.notEqual(first.artifact,newer.artifact);
+  complete();
+  const current=await state();
+  assert.equal(launches,2);assert.equal(current.message,newer.message);
+  assert.equal(current.artifact,newer.artifact);
 });
