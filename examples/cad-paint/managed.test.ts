@@ -12,6 +12,8 @@ import {loadDrawing,studio} from './server.js';
 test('a browser save delivers only the native host’s accepted products', {timeout:600_000}, async t => {
   const root = await realpath(process.env.CAD_PAINT_TEST_OUTPUT!);
   const wheel = await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
+  const fixture=process.env.CAD_PAINT_FIXTURE;
+  assert.ok(['vise','handwheel','incomplete'].includes(fixture!));
   const materials: string[][] = [];
   const model = createServer(async (request, response) => {
     let message = '';
@@ -23,12 +25,14 @@ test('a browser save delivers only the native host’s accepted products', {time
   model.listen(11434,'127.0.0.1');
   await once(model,'listening');
   t.after(() => {model.closeAllConnections();return new Promise<void>(done => model.close(() => done()));});
+  console.log('Launching Chrome for',fixture);
   const browser = await chromium.launch({channel:'chrome'});
   t.after(() => browser.close());
 
   const broken: Model = {...benchVise,id:'incomplete',parts:{...benchVise.parts}};
   delete broken.parts.movingJaw;
   for (const drawing of [benchVise,wheel,broken]) {
+    if (drawing.id!==fixture) continue;
     await t.test(drawing.id,async () => {
       const output = join(root,drawing.id), opened: string[] = [];
       const server = studio(0,{drawing,output,open:async file => {opened.push(file);}});
@@ -56,6 +60,7 @@ test('a browser save delivers only the native host’s accepted products', {time
             observer.observe(controls,{attributes:true,attributeFilter:['disabled']});
           },{capture:true,once:true});
         });
+        console.log('Submitting',fixture);
         const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:260_000});
         await first.locator('#save').click();
         for (const page of [first,second]) {
@@ -108,5 +113,5 @@ test('a browser save delivers only the native host’s accepted products', {time
       }
     });
   }
-  assert.deepEqual(materials,[['grip']]);
+  assert.deepEqual(materials,fixture==='handwheel' ? [['grip']] : []);
 });

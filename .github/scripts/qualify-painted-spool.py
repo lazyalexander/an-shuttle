@@ -2,12 +2,10 @@
 from hashlib import sha256
 from io import BytesIO
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
 import tarfile
-from tempfile import TemporaryDirectory
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
@@ -57,7 +55,7 @@ def check_outputs(attempt, parts):
               flush=True)
 
 
-def qualify(archive, work):
+def prepare(archive, work):
     call("an-loom", "verify", archive)
     project = work / "project"
     project.mkdir()
@@ -66,8 +64,10 @@ def qualify(archive, work):
     runtime = work / "runtime.json"
     subprocess.run([sys.executable, "-B", "examples/cad-paint/prepare-runtime.py",
                     project / "native-spool.toml", runtime], check=True)
-    subprocess.run(["node", "--test", "examples/cad-paint/dist/managed.test.js"], check=True,
-                   env={**os.environ, "CAD_PAINT_RUNTIME": str(runtime), "CAD_PAINT_TEST_OUTPUT": str(work)})
+
+
+def verify(work):
+    project = work / "project"
     for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
                         ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
         attempt, = (work / name).glob("drawing-*")
@@ -87,5 +87,8 @@ def qualify(archive, work):
 
 
 if __name__ == "__main__":
-    with TemporaryDirectory() as tmp:
-        qualify(Path(sys.argv[1]).resolve(strict=True), Path(tmp).resolve())
+    work = Path(sys.argv[2]).resolve(strict=True)
+    if sys.argv[1] == "verify":
+        verify(work)
+    else:
+        prepare(Path(sys.argv[1]).resolve(strict=True), work)

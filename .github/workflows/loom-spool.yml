@@ -63,11 +63,34 @@ jobs:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: node_modules/@an-loom/cad-paint-spool/dist/requirements.txt
-      - name: Verify real CAD saves, accepted outputs and terminal failure
+      - name: Prepare pinned Python runtime
         run: |
           python -m venv --without-pip "$RUNNER_TEMP/paint-env"
           requirements=$(node -p "require.resolve('@an-loom/cad-paint-spool/requirements')")
           archive=$(node -p "require.resolve('@an-loom/cad-paint-spool/archive')")
           python -m pip --python "$RUNNER_TEMP/paint-env" install --only-binary=:all: --no-compile -r "$requirements"
           ln -s "$PWD/integrations/bin/an-agent-host" "$RUNNER_TEMP/paint-host"
-          AN_AGENT_HOST_BIN="$RUNNER_TEMP/paint-host" PATH="$PWD/integrations/bin:$PATH" "$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py "$archive"
+          work="$RUNNER_TEMP/paint-qualification"
+          mkdir "$work"
+          echo "$PWD/integrations/bin" >> "$GITHUB_PATH"
+          echo "CAD_PAINT_TEST_OUTPUT=$work" >> "$GITHUB_ENV"
+          echo "CAD_PAINT_RUNTIME=$work/runtime.json" >> "$GITHUB_ENV"
+          echo "AN_AGENT_HOST_BIN=$RUNNER_TEMP/paint-host" >> "$GITHUB_ENV"
+          PATH="$PWD/integrations/bin:$PATH" "$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py "$archive" "$work"
+      - name: Browser save (vise)
+        timeout-minutes: 3
+        env:
+          CAD_PAINT_FIXTURE: vise
+        run: node --test examples/cad-paint/dist/managed.test.js
+      - name: Browser save (handwheel)
+        timeout-minutes: 3
+        env:
+          CAD_PAINT_FIXTURE: handwheel
+        run: node --test examples/cad-paint/dist/managed.test.js
+      - name: Browser save (incomplete)
+        timeout-minutes: 3
+        env:
+          CAD_PAINT_FIXTURE: incomplete
+        run: node --test examples/cad-paint/dist/managed.test.js
+      - name: Verify both accepted catalogs and the failure receipt
+        run: '"$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTPUT"'
