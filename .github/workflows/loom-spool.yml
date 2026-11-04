@@ -21,8 +21,8 @@ jobs:
     timeout-minutes: 15
     env:
       CARGO_INCREMENTAL: '0'
-      LOOM_REV: 69d86ffff1741460a921cb6d65ebb4fe43f441aa
-      HOST_REV: 8de51e0f8768c8233bb138476b1fb58c303add69
+      LOOM_REV: 9089b0283cc9077f51447e38b32f553049948d98
+      HOST_REV: 7c5fa1f2c70d36fbdd8b4054ca9384dfa9174f75
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache/restore@v4
@@ -96,6 +96,11 @@ jobs:
         timeout-minutes: 3
         env:
           CAD_PAINT_FIXTURE: incomplete
+        run: node --test examples/cad-paint/dist/managed.test.js
+      - name: Cancel an observed native paint attempt
+        timeout-minutes: 3
+        env:
+          CAD_PAINT_FIXTURE: cancelled
         run: node --test examples/cad-paint/dist/managed.test.js
       - name: Inspect original fixture attempts on failure
         if: failure()

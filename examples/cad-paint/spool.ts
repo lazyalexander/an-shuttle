@@ -12,7 +12,7 @@ import {instructions, materialSchema, planKit, type MaterialBrief} from '@an-loo
 
 async function ollama(brief:MaterialBrief, model:string):Promise<unknown> {
   const parts=Object.keys(brief.missing);
-  const reply=await fetch('http://127.0.0.1:11434/api/generate',{
+  const reply=await fetch(new URL('/api/generate',process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434'),{
     method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(120_000),
     body:JSON.stringify({model,stream:false,think:false,prompt:instructions(brief),
       format:{type:'object',required:parts,additionalProperties:false,

@@ -1,29 +1,47 @@
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
-import {readFile, readdir, realpath} from 'node:fs/promises';
+import {readFile, readdir, realpath, writeFile} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {join} from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright-core';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {setTimeout as delay} from 'node:timers/promises';
 import {benchVise, type Model} from '@an-shuttle/cad/drawing.js';
+import {openInKrita} from '@an-shuttle/krita/document.js';
 import {loadDrawing,studio} from './server.js';
 
 test('a browser save delivers only the native host’s accepted products', {timeout:600_000}, async t => {
   const root = await realpath(process.env.CAD_PAINT_TEST_OUTPUT!);
   const wheel = await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
   const fixture=process.env.CAD_PAINT_FIXTURE;
-  assert.ok(['vise','handwheel','incomplete'].includes(fixture!));
+  assert.ok(['vise','handwheel','incomplete','cancelled'].includes(fixture!));
+  const liveModel=process.env.CAD_PAINT_REAL_MODEL==='1';
+  const upstream=process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
+  const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
+  const exchanges: {request: {prompt:string;model:string;format:{required:string[]}};response:string}[] = [];
   const model = createServer(async (request, response) => {
-    let message = '';
-    for await (const chunk of request) message += chunk;
-    materials.push(JSON.parse(message).format.required);
-    response.writeHead(200,{'Content-Type':'application/json'});
-    response.end(JSON.stringify({response:JSON.stringify({grip:{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}})}));
+    try {
+      let message = '';
+      for await (const chunk of request) message += chunk;
+      const input=JSON.parse(message);
+      materials.push(input.format.required);
+      const result=liveModel
+        ? await fetch(new URL('/api/generate',upstream),{method:'POST',headers:{'Content-Type':'application/json'},
+          body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
+        : JSON.stringify({response:JSON.stringify({grip:{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}})});
+      exchanges.push({request:input,response:result});
+      response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
+    } catch(error) {response.writeHead(502);response.end(String(error));}
   });
-  model.listen(11434,'127.0.0.1');
+  model.listen(0,'127.0.0.1');
   await once(model,'listening');
+  const modelAddress=model.address();
+  assert.ok(modelAddress && typeof modelAddress!=='string');
+  process.env.OLLAMA_HOST='http://127.0.0.1:'+modelAddress.port;
   t.after(() => {model.closeAllConnections();return new Promise<void>(done => model.close(() => done()));});
   console.log('Launching Chrome for',fixture);
   const browser = await chromium.launch({channel:'chrome'});
@@ -31,11 +49,15 @@ test('a browser save delivers only the native host’s accepted products', {time
 
   const broken: Model = {...benchVise,id:'incomplete',parts:{...benchVise.parts}};
   delete broken.parts.movingJaw;
-  for (const drawing of [benchVise,wheel,broken]) {
+  const cancelled: Model = {...benchVise,id:'cancelled'};
+  for (const drawing of [benchVise,wheel,broken,cancelled]) {
     if (drawing.id!==fixture) continue;
     await t.test(drawing.id,async () => {
       const output = join(root,drawing.id), opened: string[] = [];
-      const server = studio(0,{drawing,output,open:async file => {opened.push(file);}});
+      const server = studio(0,{drawing,output,open:async file => {
+        opened.push(file);
+        if(process.env.CAD_PAINT_REAL_KRITA==='1') await openInKrita(file);
+      }});
       await once(server,'listening');
       const addr = server.address();
       assert.ok(addr && typeof addr!== 'string');
@@ -51,6 +73,11 @@ test('a browser save delivers only the native host’s accepted products', {time
           for (const part of Object.keys(drawing.parts)) await first.locator('#'+part).selectOption('0');
         }
         const before = await (await first.request.get(origin+'/state')).json();
+        const post=(originHeader:string,body:unknown)=>fetch(origin+'/save',{method:'POST',
+          headers:{origin:originHeader,'content-type':'application/json'},body:JSON.stringify(body)});
+        assert.equal((await post('http://untrusted.invalid',before)).status,403);
+        assert.equal((await post(origin,{...before,revision:before.revision+1})).status,409);
+        await first.locator('#direction').fill(direction);
         await first.evaluate(() => {
           const controls=document.querySelector<HTMLFieldSetElement>('#controls')!;
           document.querySelector('#save')!.addEventListener('click',() => {
@@ -76,9 +103,29 @@ test('a browser save delivers only the native host’s accepted products', {time
           body:JSON.stringify(before),signal:AbortSignal.timeout(10_000)});
         assert.equal(duplicate.status,409);
         await duplicate.text();
+        if (drawing===cancelled) {
+          const execute=promisify(execFile), host=process.env.AN_AGENT_HOST_BIN ?? 'an-agent-host';
+          const deadline=Date.now()+30_000;
+          let instance='';
+          while (Date.now()<deadline) {
+            const [attempt]=await readdir(output).catch(()=>[]);
+            if (attempt) {
+              instance=join(output,attempt,'instance');
+              if (await readFile(join(instance,'runs/paint/job/work/scene.json')).catch(()=>null)) break;
+            }
+            await delay(20);
+          }
+          assert.ok(instance && Date.now()<deadline,'actual render must start before cancellation');
+          const call=async(...args:string[])=>JSON.parse((await execute(host,args,{timeout:15_000})).stdout);
+          const active=await call('spool-status',instance,'paint');
+          assert.equal(active.termination_confirmed,false);
+          const args=['spool-supervisor','cancel',instance,'paint'];
+          const preview=await call(...args);
+          await call(...args,'--approve',preview.approval_sha256);
+        }
         const response = await pending;
         console.log('Save returned',fixture,response.status());
-        assert.equal(response.status(),drawing===broken ? 500 : 200);
+        assert.equal(response.status(),drawing===broken || drawing===cancelled ? 500 : 200);
         const uiLockMs=await first.evaluate(() => performance.measure('paint lock','paint-click','paint-locked').duration);
         const timing=response.request().timing();
         console.log(JSON.stringify({drawing:drawing.id,clickToLockMs:uiLockMs,
@@ -88,7 +135,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         assert.equal(state.locked,false); assert.equal(state.revision,1); assert.equal(state.epoch,before.epoch);
         assert.equal(materials.length-clicks,drawing.id==='handwheel' ? 1 : 0);
         const [attempt] = await readdir(output);
-        if (drawing===broken) {
+        if (drawing===broken || drawing===cancelled) {
           assert.equal(state.artifact,null); assert.deepEqual(opened,[]);
           assert.match(state.message,/Host paint attempt ended/);
           for (const name of ['painting.ora','beauty.png'])
@@ -101,6 +148,13 @@ test('a browser save delivers only the native host’s accepted products', {time
             assert.equal(product.status,200);
             assert.deepEqual(Buffer.from(await product.arrayBuffer()),await readFile(join(output,attempt,name)));
           }
+        }
+        if (drawing===wheel) {
+          const brief=JSON.parse(exchanges.at(-1)!.request.prompt.split('\n').slice(1).join('\n'));
+          assert.equal(brief.description,drawing.description);assert.equal(brief.direction,direction);
+          assert.deepEqual(brief.supplied,state.scene.materials);
+          assert.deepEqual(brief.missing,{grip:{label:drawing.parts.grip.label}});
+          assert.deepEqual(Object.keys(brief).sort(),['description','direction','missing','supplied']);
         }
       } catch (error) {
         const route = await fetch(origin+'/state').then(r => r.json()).catch(() => null);
@@ -121,4 +175,5 @@ test('a browser save delivers only the native host’s accepted products', {time
     });
   }
   assert.deepEqual(materials,fixture==='handwheel' ? [['grip']] : []);
+  await writeFile(join(root,fixture+'-model-exchange.local.json'),JSON.stringify({liveModel,exchanges}));
 });

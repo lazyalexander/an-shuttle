@@ -8,7 +8,7 @@ Shuttle connects an application view to a local workflow. The CAD painting examp
 
 ## CAD painting spool
 
-For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/69d86ffff1741460a921cb6d65ebb4fe43f441aa) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/8de51e0f8768c8233bb138476b1fb58c303add69) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. Use release builds (`cargo build --release --locked --bin an-loom` and `cargo build --release --locked --bin an-agent-host` in the respective repositories) because the host hashes the selected Python environment. From a clean checkout, select a dedicated runtime once:
+For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/7c5fa1f2c70d36fbdd8b4054ca9384dfa9174f75) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. Use release builds (`cargo build --release --locked --bin an-loom` and `cargo build --release --locked --bin an-agent-host` in the respective repositories) because the host hashes the selected Python environment. From a clean checkout, select a dedicated runtime once:
 
 ```sh
 npm ci
@@ -22,7 +22,7 @@ npm run studio
 
 Visit http://127.0.0.1:4183. Adjust the jaw opening, camera and finishes. Click **保存并绘制**. The submitting CAD window freezes immediately. The server locks the saved revision before awaiting any work, broadcasts the lock to every connected CAD window and rejects concurrent or stale saves. A disconnected window stays disabled until it reconnects. The studio publishes both accepted artifacts on success and releases the CAD lock before waiting for Krita to open. A confirmed terminal failure releases the lock with no download. If the waiting CLI loses its result, the studio keeps the lock and checks the same supervised run for termination.
 
-The spool uses the provided camera and light. Omit the camera for the default three-quarter view, or omit the light for a random azimuth. Assign all four finishes to render offline. To ask a model for missing finishes, start local Ollama with a downloaded model that supports structured JSON. Set `OLLAMA_MODEL` to its name (default `gemma4:e4b`). Model failures are reported in the CAD interface.
+The spool uses the provided camera and light. Omit the camera for the default three-quarter view, or omit the light for a random azimuth. Assign all four finishes to render offline. To ask a model for missing finishes, start local Ollama with a downloaded model that supports structured JSON. Set `OLLAMA_MODEL` to its name (default `gemma4:e4b`) and optionally `OLLAMA_HOST` to its base URL (default `http://127.0.0.1:11434`). Model failures are reported in the CAD interface.
 
 Mitsuba path traces the saved geometry on the CPU. A separate visibility pass assigns visible pixels to the base, hardware, fixed jaw and moving jaw. Every delivery checks that the four layers composite byte-for-byte to the transparent PNG. The standalone ORA contains the resolved scene recipe. For finer editing, set `CUT_SPOOL_BIN` to a local cutting-spool executable before starting the studio. **送交切割 spool** passes the absolute ORA path as one argument. Exit zero acknowledges delivery. Handoff is optional and CAD stays editable while the cutter runs. Each save gets its own folder under `paintings/`. Shuttle requests that local Krita open the document and also exposes a download. Set `KRITA_BIN` to select the local painting app.
 
@@ -60,7 +60,7 @@ The [CAD painting reference package in Loom](https://github.com/lazyalexander/an
 | --- | --- |
 | `packages/view` | View binding, revision checks and serialized edits |
 | `packages/cad` | CAD snapshot validation, part identifiers and vise geometry |
-| `packages/krita` | Opening a local document and providing the compatibility packing entry |
+| `packages/krita` | Opening a local document; domain format generation stays in the pinned Loom spool |
 | `examples/cad-paint` | Web CAD, lock owner and pinned painting-spool client |
 | `examples/plate` | Minimal plate editor demonstrating a bound view |
 
@@ -71,3 +71,38 @@ After building, run `npm start` and open http://127.0.0.1:4182. Open two plate v
 An edit clears the mark and invalidates its target immediately. The first save starts immediately and edits made in flight coalesce. The helper also accepts an explicit trailing delay. A matching save acknowledgement makes the latest generation available. The action rechecks its target immediately before changing the UI.
 
 Run `npm test` with the rendering dependencies installed. With Google Chrome installed, `npm run test:browser` checks view targeting, multi-tab locks and recovery. Both suites use the same incremental TypeScript build.
+
+## Managed CAD and native Krita acceptance
+
+The [portable acceptance](examples/cad-paint/acceptance/macos.json) records actual
+two-tab saves, one local Gemma material proposal, host cancellation, fixed output
+delivery and Krita import/save of both drawings. The imported KRA files retain
+all four/five editable paint layers and reproduce the accepted PNG pixels exactly.
+The provider sees only the domain description, operator direction, supplied
+finishes and missing part labels. The selected kit cannot replace the protected
+renderer. Wrong-origin and stale saves are rejected before submission.
+
+Use `.github/workflows/loom-spool.yml` for the fresh-environment recipe. It runs
+`managed.test.js` separately with `CAD_PAINT_FIXTURE` set to `vise`, `handwheel`,
+`incomplete` and `cancelled`. Cancellation waits for actual renderer activity,
+calls the existing host supervisor and requires terminal evidence; both CAD tabs
+unlock with no download. The final Python verifier checks catalog hashes,
+protected-source update refusals, process reaping and failed/cancelled acceptance
+refusals. CI uses a deterministic model fixture on a fresh local port.
+
+For an explicit real-model run, set `CAD_PAINT_REAL_MODEL=1` for the handwheel
+fixture; its local observation proxy forwards one request to the selected
+`OLLAMA_HOST`. `CAD_PAINT_REAL_KRITA=1` also requests the native document launch.
+Keep generated requests and exchange logs private. Complete native readback with:
+
+```sh
+python3 -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTPUT" \
+  --krita /selected/krita
+```
+
+This invokes Krita's [documented export command](https://docs.krita.org/en/reference_manual/linux_command_line.html)
+with an independent resource directory, then checks KRA layers and merged pixels.
+It verifies native file import/save, not GUI brush editing. A launch request alone
+is insufficient. The former `packPainting` compatibility entry is retired;
+the installed domain spool already produces and validates the ORA, so the Krita
+bridge no longer carries Python packaging glue or a domain-package peer dependency.

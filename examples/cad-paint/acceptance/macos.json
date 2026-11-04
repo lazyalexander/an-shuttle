@@ -1,0 +1,109 @@
+{
+  "schema": "an-shuttle-cad-krita-acceptance-v1",
+  "date": "2026-11-04",
+  "platform": "macos-aarch64",
+  "shuttle_base_revision": "18f1ab0aae9bb6667ec3d6295521c489eb625f6d",
+  "loom_revision": "9089b0283cc9077f51447e38b32f553049948d98",
+  "host_revision": "7c5fa1f2c70d36fbdd8b4054ca9384dfa9174f75",
+  "domain_client_revision": "821176910ceba06fa5fa0b6036d7f4d09291c2d1",
+  "domain_version": "0.1.0",
+  "krita": "5.3.4 (e7e52a7)",
+  "python": "3.12.13",
+  "node": "26.7.0",
+  "knowledge": {
+    "provider": "local Ollama",
+    "model": "gemma4:e4b",
+    "requests": 1,
+    "disclosed_fields": [
+      "description",
+      "direction",
+      "supplied",
+      "missing"
+    ],
+    "requested_parts": [
+      "grip"
+    ],
+    "supplied_finishes_preserved": true,
+    "prompt_tokens": 166,
+    "output_tokens": 37,
+    "no_model_supplied_source_executed": true,
+    "proposal_encoded_as_validated_literals": true
+  },
+  "permission": {
+    "wrong_origin_refused": true,
+    "stale_revision_refused": true,
+    "duplicate_save_refused": true,
+    "protected_renderer_update_refused": true,
+    "traversal_update_refused": true
+  },
+  "products": [
+    {
+      "drawing": "vise",
+      "layers": 4,
+      "pixels_equal": true,
+      "accepted_ora_sha256": "f289ac7a84e5edd3b5cf653f015ac2c373236ac7fc2735988f232b6aabe9a3db",
+      "kra_sha256": "c20878fe2c821c98dcab6201ffa48755e5508dd30474753d5e362daffd15a750",
+      "width": 960,
+      "height": 680,
+      "request_sha256": "20b3dbaa9ed98effdd512bb5eabbe038cc099b63808ee2b00e47254b18bd5834",
+      "kit_sha256": "c4eea162ac62236059a97efda0657a04d65225ba857487c14e8d4752f460f3b9",
+      "release": "1c3a409c3a4f29d923f2e515100f7d6134d7de744e340247d295a46ffafd74c1",
+      "artifact_revisions": {
+        "beauty.png": "72854509a1ad0f774ffdd2eaa6f25739540e28d7983101ff2f0cce903ef00607",
+        "painting.ora": "0126d5fbe3b62e5086677b3ba013036087dd554babfebea1216b34581cd91771"
+      },
+      "native_launch_requested": true
+    },
+    {
+      "drawing": "handwheel",
+      "layers": 5,
+      "pixels_equal": true,
+      "accepted_ora_sha256": "8d58a4dba01b7b8e176245226bc7475f2283b8feffcca83c200d91a940c541d9",
+      "kra_sha256": "e49e73874b131918a0f4a4a62fd421ca118d10aec04660822cbbbaa122ef8e78",
+      "width": 960,
+      "height": 680,
+      "request_sha256": "c8619ac088853fea10a196033415c0469ffc4f6a0b33dfc5a33d95cfb6608d3d",
+      "kit_sha256": "0b06ba023a46645502560e844a6b621064cde1c1b548ed0424909852c8f2d782",
+      "release": "1c3a409c3a4f29d923f2e515100f7d6134d7de744e340247d295a46ffafd74c1",
+      "artifact_revisions": {
+        "beauty.png": "08100871f7fee893c70c63e37e0219aacb94cd084b6535934ddcc61124b6b64b",
+        "painting.ora": "1e9661517e6ae0eddc087fce523a4a436e4af37605c9de1d52d35570396ae684"
+      },
+      "native_launch_requested": true
+    }
+  ],
+  "terminal_cases": [
+    {
+      "drawing": "incomplete",
+      "status": "failed",
+      "reaped": true,
+      "process_group_empty": true,
+      "termination_confirmed": true,
+      "artifact_accepted": false,
+      "both_cad_tabs_unlocked": true,
+      "automatic_retries": 0
+    },
+    {
+      "drawing": "cancelled",
+      "status": "cancelled",
+      "reaped": true,
+      "process_group_empty": true,
+      "termination_confirmed": true,
+      "artifact_accepted": false,
+      "both_cad_tabs_unlocked": true,
+      "automatic_retries": 0
+    }
+  ],
+  "limits": [
+    "Real Chrome tabs and native Krita CLI import/save; GUI brush editing was not verified",
+    "Native UI automation timed out; a launch request was not treated as delivery proof",
+    "Initial shared-resource export timed out; an independent Krita resource directory succeeded",
+    "CI uses deterministic local model replies; the recorded live Gemma and Krita run is separate",
+    "Raw requests, model replies, app logs and machine paths remain private"
+  ],
+  "selected_binaries_sha256": {
+    "host": "05f22a26b4999b11161c75c56c21b2c3e6cdd473eb493ef7e206b6dd507dae4e",
+    "loom": "d3b11e921d2c40529aead87e49f84a28a4cad956759ad250b7556ed87c2baa45",
+    "krita": "22e6da195e5ccd5df68909691aeb4d617f3a66b70b6530ea5052f802f3e0bfb2"
+  }
+}
