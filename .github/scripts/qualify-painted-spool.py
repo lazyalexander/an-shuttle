@@ -1,7 +1,9 @@
 """Check real browser saves against the host catalog and independent pixel reconstruction."""
 from hashlib import sha256
+import argparse
 from io import BytesIO
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -18,6 +20,11 @@ def call(*args):
 
 def digest(path):
     return sha256(path.read_bytes()).hexdigest()
+
+
+def refused(*args):
+    result = subprocess.run(list(map(str, args)), capture_output=True, text=True, timeout=15)
+    assert result.returncode != 0, "Expected host refusal"
 
 
 def check_outputs(attempt, parts):
@@ -78,17 +85,63 @@ def verify(work):
             candidate = attempt / "appearance.py"
             received = call("an-loom", "receive-task", task, "kit/appearance.py", candidate)
             assert received["sha256"] == digest(candidate) == digest(attempt / "instance/kit/appearance.py")
-    refused, = (work / "incomplete").glob("drawing-*")
-    status = call("an-agent-host", "spool-status", refused / "instance", "paint")
-    assert status["termination_confirmed"] and status["execution_status"] == "failed"
-    assert status["artifact_status"] == "not-accepted" and not (refused / "accepted.json").exists()
-    print(json.dumps({key: status[key] for key in ("phase", "execution_status", "termination_confirmed",
-                                                    "artifact_status")}), flush=True)
+            protected = attempt / "native-release/silk/render.py"
+            before = digest(protected)
+            for target in ["render.py", "../silk/render.py"]:
+                refused("an-agent-host", "spool-kit-update", attempt / "instance", target, candidate)
+            assert digest(protected) == before
+    for name, expected in [("incomplete", "failed"), ("cancelled", "cancelled")]:
+        attempt, = (work / name).glob("drawing-*")
+        status = call("an-agent-host", "spool-status", attempt / "instance", "paint")
+        assert status["termination_confirmed"] and status["execution_status"] == expected
+        assert status["artifact_status"] == "not-accepted" and not (attempt / "accepted.json").exists()
+        result = json.loads((attempt / "instance/runs/paint/result.json").read_text())
+        assert result["workspace"]["reaped"] and result["workspace"]["group_observation"]["empty"]
+        assert result["workspace"]["automatic_retries"] == 0
+        refused("an-agent-host", "spool-accept", attempt / "instance", "paint")
+        print(json.dumps({"drawing": name, **{key: status[key] for key in (
+            "phase", "execution_status", "termination_confirmed", "artifact_status")}}), flush=True)
+
+
+def verify_krita(work, executable):
+    root = work / "krita-readback"
+    root.mkdir()
+    resources = root / "resources"
+    resources.mkdir()
+    env = {**os.environ, "QT_QPA_PLATFORM": "offscreen"}
+    reports = []
+    for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
+                        ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
+        attempt, = (work / name).glob("drawing-*")
+        output = root / (name + ".kra")
+        with (root / (name + ".log")).open("w") as log:
+            subprocess.run([str(executable), "--resource-location", str(resources),
+                            str(attempt / "painting.ora"), "--export", "--export-filename", str(output)],
+                           check=True, timeout=60, env=env, stdout=log, stderr=log)
+        with ZipFile(output) as document:
+            tree = ElementTree.fromstring(document.read("maindoc.xml"))
+            layers = [v for v in tree.iter() if v.tag.split("}")[-1] == "layer"]
+            assert len(layers) == len(parts) and {v.get("name") for v in layers} == set(parts)
+            assert all(v.get("nodetype") == "paintlayer" and v.get("locked") == "0" for v in layers)
+            merged = Image.open(BytesIO(document.read("mergedimage.png"))).convert("RGBA")
+            original = Image.open(attempt / "beauty.png").convert("RGBA")
+            assert merged.size == original.size and merged.tobytes() == original.tobytes()
+        reports.append({"drawing": name, "layers": len(layers), "pixels_equal": True,
+                        "accepted_ora_sha256": digest(attempt / "painting.ora"), "kra_sha256": digest(output)})
+    (root / "report.json").write_text(json.dumps(reports, indent=2))
+    print(json.dumps({"krita_readback": reports}), flush=True)
 
 
 if __name__ == "__main__":
-    work = Path(sys.argv[2]).resolve(strict=True)
-    if sys.argv[1] == "verify":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("archive_or_stage")
+    parser.add_argument("work", type=Path)
+    parser.add_argument("--krita", type=Path, help="Also import accepted ORAs into native KRA files and compare layers/pixels")
+    args = parser.parse_args()
+    work = args.work.resolve(strict=True)
+    if args.archive_or_stage == "verify":
         verify(work)
+        if args.krita:
+            verify_krita(work, args.krita.resolve(strict=True))
     else:
-        prepare(Path(sys.argv[1]).resolve(strict=True), work)
+        prepare(Path(args.archive_or_stage).resolve(strict=True), work)
