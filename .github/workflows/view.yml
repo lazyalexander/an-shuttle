@@ -7,6 +7,8 @@ on:
       - 'package-lock.json'
       - '**/tsconfig*.json'
       - 'examples/**/*.ts'
+      - 'examples/cad-paint/*.py'
+      - 'examples/cad-paint/authoring-requirements.txt'
       - 'packages/**/*.ts'
       - '.github/workflows/view.yml'
 permissions:
@@ -26,8 +28,11 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: node_modules/@an-loom/cad-paint-spool/dist/requirements.txt
-      - run: python -m pip install -r examples/cad-paint/requirements.txt
+          cache-dependency-path: |
+            node_modules/@an-loom/cad-paint-spool/dist/requirements.txt
+            examples/cad-paint/authoring-requirements.txt
+      - run: python -m pip install -r examples/cad-paint/requirements.txt -r examples/cad-paint/authoring-requirements.txt
+      - run: python -m unittest discover -s examples/cad-paint -p test_export_scad.py
       - uses: actions/cache@v4
         with:
           path: |
