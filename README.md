@@ -44,8 +44,15 @@ Set `PORT=4184` to run it alongside the vise. The browser owns the edit lock in 
 
 - Edit `model.scad` for the solid geometry and the named part groups.
 - Edit `model.json` for part IDs, mask colors, supplied finishes, framing and the revolute joint. The neutral-angle meshes use the same world coordinates and pivot as OpenSCAD.
-- Install the authoring-only importer with `python3 -m pip install -r examples/cad-paint/authoring-requirements.txt`. Trimesh owns STL decoding; geometry processing is disabled, and the adapter preserves part names, triangle order and five-decimal coordinates. These dependencies are separate from the painting runtime.
-- Rebuild `meshes.json` after geometry or part-ID changes with `python3 examples/cad-paint/export-scad.py examples/cad-paint/handwheel`. OpenSCAD is needed only for this export. Set `OPENSCAD_BIN` if the executable has a different path.
+- Use a separate authoring environment so importing CAD tools does not invalidate the selected painting runtime's site hash:
+
+```sh
+python3 -m venv .venv-authoring
+.venv-authoring/bin/python -m pip install -r examples/cad-paint/authoring-requirements.txt
+.venv-authoring/bin/python examples/cad-paint/export-scad.py examples/cad-paint/handwheel
+```
+
+Trimesh owns STL decoding; geometry processing is disabled, and the adapter preserves part names, triangle order and five-decimal coordinates. OpenSCAD is needed only for this export. Set `OPENSCAD_BIN` if its executable has a different path. Rebuild `meshes.json` after geometry or part-ID changes. Keep `.venv-authoring` separate from the hash-bound painting environment.
 
 The two demos share capture, locking, material negotiation, scene rendering, ORA delivery and cutting-spool handoff. Additional triangle-mesh assemblies with a single axis-aligned revolute joint can use the directory interface. A different native editor or another joint type needs its own integration.
 
