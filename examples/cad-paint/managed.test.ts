@@ -22,17 +22,18 @@ test('a browser save delivers only the native host’s accepted products', {time
   const hostAgent=process.env.CAD_MATERIAL_HOST_AGENT==='1';
   if (hostAgent) assert.ok(process.env.CAD_MATERIAL_READER,'Host material acceptance requires the delegated reader');
   const liveHistory=hostAgent && liveModel && fixture==='handwheel';
+  const cancelOnly=liveHistory && process.env.CAD_PAINT_CANCEL_ONLY==='1';
   const upstream=process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
   const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
   let lookups=0, proofs=0;
   let holdAdoption=false;
   let releaseAdoption=()=>{};
-  let modelReplied=()=>{};
-  let proxyFinished=()=>{};
+  let adoptionRequested=()=>{};
+  let proxyFinished=(matched:boolean)=>{void matched;};
   const delayed=new Promise<void>(resolve=>{releaseAdoption=resolve;});
-  const received=new Promise<void>(resolve=>{modelReplied=resolve;});
-  const sent=new Promise<void>(resolve=>{proxyFinished=resolve;});
+  const requested=new Promise<void>(resolve=>{adoptionRequested=resolve;});
+  const sent=new Promise<boolean>(resolve=>{proxyFinished=resolve;});
   const exchanges: {request: {prompt:string;model:string;format:{required:string[]}};response:string}[] = [];
   const model = createServer(async (request, response) => {
     try {
@@ -52,10 +53,12 @@ test('a browser save delivers only the native host’s accepted products', {time
         if (action) lookups++; else proofs++;
         const answer=action ? {action:'read_approved_material',...data.permitted}
           : {adopt:true,evidence_id:data.evidence_id};
+        const holding=!action && holdAdoption;
+        if (holding) adoptionRequested();
         const result=liveModel
           ? await fetch(new URL(request.url,upstream),{method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({...input,reasoning_effort:'none',temperature:0,response_format:{type:'json_object'}}),
-            signal:AbortSignal.timeout(300_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
+            signal:AbortSignal.timeout(holding ? 600_000 : 300_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
           : JSON.stringify({choices:[{message:{content:JSON.stringify(answer)}}],
             usage:{prompt_tokens:10,completion_tokens:5}});
         if (liveModel) {
@@ -63,13 +66,12 @@ test('a browser save delivers only the native host’s accepted products', {time
           console.log(JSON.stringify({stage:packet.source,finishReason:modelReply.choices[0].finish_reason,
             usage:modelReply.usage}));
         }
-        if (!action && holdAdoption) {
+        if (holding) {
           const reply=JSON.parse(JSON.parse(result).choices[0].message.content);
           assert.deepEqual(reply,answer,'The delayed real model reply must be a valid adoption');
-          modelReplied();
           await delayed;
           response.end(result);
-          proxyFinished();
+          proxyFinished(true);
           return;
         }
         response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
@@ -95,7 +97,10 @@ test('a browser save delivers only the native host’s accepted products', {time
           [part,{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}])) )});
       exchanges.push({request:input,response:result});
       response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
-    } catch(error) {response.writeHead(502);response.end(String(error));}
+    } catch(error) {
+      if (holdAdoption) proxyFinished(false);
+      response.writeHead(502);response.end(String(error));
+    }
   });
   model.listen(0,'127.0.0.1');
   await once(model,'listening');
@@ -230,7 +235,7 @@ test('a browser save delivers only the native host’s accepted products', {time
           await stale.text();
 
           let current=state;
-          for (const mode of ['complement','exact','history']) {
+          for (const mode of cancelOnly ? [] : ['complement','exact','history']) {
             const generated=materials.length;
             if (mode==='complement') await first.locator('#'+part).selectOption(drawing===wheel ? '0' : '');
             if (mode==='exact') await first.locator('#reuseGrip').check();
@@ -276,13 +281,13 @@ test('a browser save delivers only the native host’s accepted products', {time
             const cancelledSave=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:630_000});
             void cancelledSave.catch(()=>{});
             await first.locator('#save').click();
-            await Promise.race([received,delay(610_000,undefined,{ref:false}).then(()=>{throw Error('No valid late model reply');})]);
+            await Promise.race([requested,delay(310_000,undefined,{ref:false}).then(()=>{throw Error('The host did not request adoption');})]);
             const cancellation=first.waitForResponse(r=>r.url()===origin+'/cancel-material');
             await first.locator('#cancelMaterial').click();
             assert.equal((await cancellation).status(),202);
             releaseAdoption();
-            await sent;
             assert.equal((await cancelledSave).status(),500);
+            assert.equal(await sent,true,'The real Ollama reply must arrive after cancellation');
             const settled=await readState();
             assert.equal(settled.artifact,null);
             assert.equal(settled.locked,false);
