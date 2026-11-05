@@ -1,4 +1,5 @@
 import {isDeepStrictEqual} from 'node:util';
+import {materialSchema} from '@an-loom/cad-paint-spool/agent';
 import type {MaterialEvidence} from './host.js';
 
 export async function verifyMaterial(document:string, part:string, revision:number,
@@ -18,9 +19,9 @@ export async function verifyMaterial(document:string, part:string, revision:numb
   ];
   type Message={role:string;content:string;tool_calls?:{function:{name:string;arguments:unknown}}[]};
   const signal=AbortSignal.timeout(120_000);
-  const chat=async(tools:object[]):Promise<Message>=>{
+  const chat=async(tools:object[],format?:object):Promise<Message>=>{
     const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},redirect:'error',signal,
-      body:JSON.stringify({model,messages,tools,think:false,stream:false,options:{temperature:0,num_ctx:4096,num_predict:384}})});
+      body:JSON.stringify({model,messages,tools,format,think:false,stream:false,options:{temperature:0,num_ctx:4096,num_predict:384}})});
     if (!response.ok) throw Error('Local evidence model returned HTTP '+response.status);
     return (await response.json()).message;
   };
@@ -33,7 +34,8 @@ export async function verifyMaterial(document:string, part:string, revision:numb
   const evidence=await read();
   const proof={...scope,artifact_revision:evidence.artifact.revision,material:evidence.material};
   messages.push(action,{role:'tool',tool_name:name,content:JSON.stringify(proof)});
-  const result=await chat([]);
+  const result=await chat([],{type:'object',required:Object.keys(proof),additionalProperties:false,
+    properties:{...tool.function.parameters.properties,artifact_revision:{type:'string'},material:materialSchema}});
   if (result.tool_calls?.length || !isDeepStrictEqual(JSON.parse(result.content),proof))
     throw Error('The model did not verify the accepted material evidence');
   return evidence;
