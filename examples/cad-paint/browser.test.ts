@@ -31,7 +31,13 @@ test('saving freezes every CAD control across tabs, including a newly opened vie
     await b.locator('#controls:enabled').waitFor();
     const original=await (await a.request.get(url+'/state')).json();
     await a.locator('#save').click();
-    const c=await browser.newPage();await c.goto(url);
+    const c=await browser.newPage();
+    await c.route('**/events',route=>route.abort());
+    await c.goto(url);
+    await c.getByText('连接中断 · CAD 已锁定').waitFor();
+    assert.equal(await c.locator('#controls:disabled').count(),1);
+    await c.unroute('**/events');
+    await c.reload();
     for(const page of [a,b,c]){
       await page.getByText(/CAD 已锁定 · 正在绘制/).waitFor();
       assert.equal(await page.locator('input:enabled,select:enabled,button:enabled').count(),0);

@@ -42,7 +42,7 @@ def check_outputs(attempt, parts, revision=1):
         assert scene["source"] == request["source"] and scene["source"]["revision"] == revision
         assert scene["request_sha256"] == digest(attempt / "request.json")
         assert scene["kit_sha256"] == digest(instance / "kit/appearance.py")
-        assert scene["generated"] == (["grip"] if scene["drawing"] == "handwheel" else [])
+        assert set(scene["generated"]) == set(parts) - request["scene"]["materials"].keys()
         png_bytes = (attempt / "beauty.png").read_bytes()
         assert document.read("mergedimage.png") == png_bytes
         png = Image.open(BytesIO(png_bytes)).convert("RGBA")
@@ -82,22 +82,28 @@ def verify(work):
         attempt = attempts[1]
         check_outputs(attempt, parts)
         if 2 in attempts:
-            current = attempts[2]
-            check_outputs(current, parts, 2)
-            previous = json.loads((attempt / "accepted.json").read_text())
+            check_outputs(attempts[2], parts, 2)
+        for revision in (3, 4):
+            if revision not in attempts:
+                continue
+            current = attempts[revision]
+            check_outputs(current, parts, revision)
+            source = attempts[revision - 1]
+            previous = json.loads((source / "accepted.json").read_text())
             reference = next(item["binding"] for item in previous["outputs"] if item["path"] == "painting.ora")
             request = json.loads((current / "request.json").read_text())
             assert request["agent"]["model"] is None
-            with ZipFile(attempt / "painting.ora") as before, ZipFile(current / "painting.ora") as after:
+            with ZipFile(source / "painting.ora") as before, ZipFile(current / "painting.ora") as after:
                 original = json.loads(before.read("data/scene.json"))
                 reused = json.loads(after.read("data/scene.json"))
             evidence = request["material_evidence"]
+            part = "grip" if name == "handwheel" else "movingJaw"
+            assert evidence["part"] == part
             assert evidence["source"] == original["source"]
             assert evidence["request_sha256"] == original["request_sha256"]
             assert evidence["artifact"]["revision"] == reference["revision"]
             assert evidence["artifact"]["content_sha256"] == reference["content_sha256"]
-            assert evidence["material"] == original["materials"]["grip"] == reused["materials"]["grip"]
-            print(json.dumps({"grip_reused_from": reference["revision"], "model_calls_for_reuse": 0}), flush=True)
+            assert evidence["material"] == original["materials"][part] == reused["materials"][part]
         if name == "handwheel":
             task = work / "task"
             call("an-loom", "task", project, task)
@@ -109,6 +115,13 @@ def verify(work):
             for target in ["render.py", "../silk/render.py"]:
                 refused("an-agent-host", "spool-kit-update", attempt / "instance", target, candidate)
             assert digest(protected) == before
+    timings = [work / (name + "-lock-timings.json") for name in ("vise", "handwheel")]
+    if any(path.exists() for path in timings):
+        samples = sorted(value for path in timings for value in json.loads(path.read_text()))
+        assert len(samples) == 8
+        # The nearest-rank p95 is the maximum of eight samples.
+        print(json.dumps({"click_to_lock_ms": samples, "p95_ms": samples[-1]}), flush=True)
+        assert samples[-1] <= 180
     for name, expected in [("incomplete", "failed"), ("cancelled", "cancelled")]:
         attempt, = (work / name).glob("drawing-*")
         status = call("an-agent-host", "spool-status", attempt / "instance", "paint")

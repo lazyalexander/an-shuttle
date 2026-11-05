@@ -14,10 +14,12 @@ import {defaultCamera} from '@an-shuttle/cad/scene.js';
 import {benchVise,parameterInput,saveDrawing,type Model,type MeshDrawing,type SavedDrawing} from '@an-shuttle/cad/drawing.js';
 import {openInKrita} from '@an-shuttle/krita/document.js';
 import {paint,paintStandalone} from './spool.js';
-import {readPreviousGrip} from './host.js';
+import {readPreviousMaterial} from './host.js';
+import {verifyMaterial} from './verify-material.js';
 
 export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model}={}) {
-  const gripReader=render===paint && drawing.id==='handwheel' ? process.env.CAD_MATERIAL_READER : undefined;
+  const referencePart=drawing.id==='handwheel' ? 'grip' : drawing.id==='vise' ? 'movingJaw' : null;
+  const materialReader=render===paint && referencePart ? process.env.CAD_MATERIAL_READER : undefined;
   let lastAccepted:{folder:string;revision:number}|undefined;
   const epoch=randomUUID();
   let revision=0, locked=false;
@@ -27,7 +29,7 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
   let paintingFile: string|null = null;
   let cutStatus: 'ready'|'sending'|'sent' = 'ready';
   const clients=new Set<ServerResponse>();
-  const state=()=>({epoch,revision,locked,drawingId:drawing.id,scene,direction,message,artifact,canCut:!!cut,cutStatus,gripReference:gripReader ? lastAccepted?.revision ?? null : null});
+  const state=()=>({epoch,revision,locked,drawingId:drawing.id,scene,direction,message,artifact,canCut:!!cut,cutStatus,materialReference:materialReader && lastAccepted ? {part:referencePart,revision:lastAccepted.revision} : null,gripReference:materialReader && referencePart==='grip' ? lastAccepted?.revision ?? null : null});
   function publish() {
     for(const client of clients) client.write('data: '+JSON.stringify(state())+'\n\n');
   }
@@ -75,10 +77,15 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
       }
       if(locked || input.epoch!==epoch || input.revision!==revision) return send(409,'text/plain','CAD locked or revision changed');
       const frozen=saveDrawing(input.scene,drawing);
-      const previous=input.reuseGrip===undefined ? undefined : lastAccepted;
-      if (input.reuseGrip!==undefined &&
-          (!gripReader || !previous || previous.revision!==input.reuseGrip || frozen.materials.grip))
-        return send(409,'text/plain','握柄材质引用已变化，或与本次手动材质冲突');
+      const selection=input.materialHistory;
+      const exact=input.reuseMaterial ?? (referencePart==='grip' ? input.reuseGrip : undefined);
+      if (selection!==undefined && (selection!=='last-accepted' || exact!==undefined))
+        return send(400,'text/plain','Invalid material history request');
+      const previous=selection!==undefined || exact!==undefined ? lastAccepted : undefined;
+      if ((selection!==undefined || exact!==undefined) &&
+          (!materialReader || !referencePart || !previous || (exact!==undefined && previous.revision!==exact) ||
+           frozen.materials[referencePart]))
+        return send(409,'text/plain','材质引用已变化，或与本次手动材质冲突');
       const nextDirection=input.direction ?? '';
       if(typeof nextDirection!=='string' || nextDirection.length>500) return send(400,'text/plain','Invalid painting direction');
       direction=nextDirection;
@@ -86,8 +93,12 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
       try {
         await mkdir(output,{recursive:true});
         const folder=await mkdtemp(join(output,'drawing-'));
-        const reused=previous && gripReader
-          ? await readPreviousGrip(gripReader,previous.folder,drawing.id,epoch,previous.revision) : undefined;
+        const reused=previous && materialReader && referencePart
+          ? await (selection
+            ? verifyMaterial(drawing.id,referencePart,previous.revision,
+                () => readPreviousMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart))
+            : readPreviousMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart))
+          : undefined;
         const file=await render(frozen,revision,folder,drawing,epoch,direction,()=>{
           message='等待宿主确认绘制终止 · CAD 保持锁定';publish();
         },reused);

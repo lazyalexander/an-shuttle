@@ -83,17 +83,18 @@ jobs:
           echo "CAD_PAINT_RUNTIME=$work/runtime.json" >> "$GITHUB_ENV"
           echo "AN_AGENT_HOST_BIN=$RUNNER_TEMP/paint-host" >> "$GITHUB_ENV"
           PATH="$PWD/integrations/bin:$PATH" "$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py "$archive" "$work"
-      - name: Browser save (vise)
-        timeout-minutes: 3
-        env:
-          CAD_PAINT_FIXTURE: vise
-        run: node --test examples/cad-paint/dist/managed.test.js
       - uses: actions/checkout@v4
         with:
           repository: lazyalexander/an-loom
           ref: ${{ env.MATERIAL_READER_REV }}
           path: integrations/material-evidence
           persist-credentials: false
+      - name: Browser save (vise)
+        timeout-minutes: 4
+        env:
+          CAD_PAINT_FIXTURE: vise
+          CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
+        run: node --test examples/cad-paint/dist/managed.test.js
       - name: Browser save (handwheel)
         timeout-minutes: 3
         env:
