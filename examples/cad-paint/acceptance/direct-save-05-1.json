@@ -1,0 +1,49 @@
+{
+  "schema": "an-shuttle-cad-direct-save-05-1-v1",
+  "date": "2026-11-05",
+  "platform": "macos-aarch64",
+  "shuttle_revision": "df1fe62b69a780478a43eac2521a2a4623c9a9af",
+  "loom_checkout_revision": "6f248f44b9b50dba74ea79af20068a3f34e1efca",
+  "host_checkout_revision": "42d947fab7d306ebb01fff1edde06a999084b228",
+  "selected_binary_sha256": {
+    "loom": "d3b11e921d2c40529aead87e49f84a28a4cad956759ad250b7556ed87c2baa45",
+    "host": "05f22a26b4999b11161c75c56c21b2c3e6cdd473eb493ef7e206b6dd507dae4e"
+  },
+  "method": "One Chrome click per drawing, two open CAD tabs, all materials supplied, native host render and artifact checkout. Timings use browser performance marks; the other-tab mark is aligned to the click using performance.timeOrigin.",
+  "samples": [
+    {
+      "drawing": "vise",
+      "input_revision": 1,
+      "click_to_current_window_read_only_ms": 0.7,
+      "click_to_other_window_read_only_ms": 5.6,
+      "click_to_delivery_ms": 7648.6,
+      "model_requests": 0,
+      "concurrent_save_http": 409,
+      "layers": 4,
+      "request_sha256": "a1488a1f81eb4087a4f1d62d70cc882ca84a6993937ae59fcb71e2d3454b2909",
+      "kit_sha256": "c4eea162ac62236059a97efda0657a04d65225ba857487c14e8d4752f460f3b9",
+      "accepted_revisions": {
+        "beauty.png": "4eb5c83fb20fc779b97cc9f1d1e155f4d6e9737f66b5662dd61a682968fc2c04",
+        "painting.ora": "b2ebd03a074e99b072e10fea8c6587dd41a3eff843570638f70d84917121157a"
+      }
+    },
+    {
+      "drawing": "handwheel",
+      "input_revision": 1,
+      "click_to_current_window_read_only_ms": 0.8,
+      "click_to_other_window_read_only_ms": 5.5,
+      "click_to_delivery_ms": 6481.2,
+      "model_requests": 0,
+      "concurrent_save_http": 409,
+      "layers": 5,
+      "request_sha256": "e2c03aa5ac61056acaf1a3c9f68ea1f8ed9c2ea4c2dcf45473bf44d523fd65ed",
+      "kit_sha256": "c4eea162ac62236059a97efda0657a04d65225ba857487c14e8d4752f460f3b9",
+      "accepted_revisions": {
+        "beauty.png": "35afcb68ef54908ecedfa6937ed6048a0a9adc40784567a92c75df7868720d6b",
+        "painting.ora": "053311ccd8a5e066baa4eabcaa46fb9d8f851d3780f6a5d68947138b08bd8a6e"
+      }
+    }
+  ],
+  "verified": ["both_tabs_locked", "concurrent_save_refused", "native_host_accepted_png_and_ora", "same_input_revision_and_kit_digest", "ora_layers_composite_exactly_to_png", "no_generated_materials"],
+  "limits": ["One sample per drawing does not establish a p95 latency.", "Selected binaries were existing release builds; their SHA-256 values identify the executed tools independently of current checkouts.", "Krita GUI editing was outside this direct-save acceptance."]
+}

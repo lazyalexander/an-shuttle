@@ -112,3 +112,13 @@ jobs:
           done
       - name: Verify both accepted catalogs and the failure receipt
         run: '"$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTPUT"'
+      - name: Direct save both CAD drawings without a model
+        env:
+          CAD_PAINT_DIRECT: '1'
+        run: |
+          direct="$RUNNER_TEMP/paint-direct"
+          mkdir "$direct"
+          for fixture in vise handwheel; do
+            CAD_PAINT_FIXTURE="$fixture" CAD_PAINT_TEST_OUTPUT="$direct" node --test examples/cad-paint/dist/managed.test.js
+          done
+          "$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py verify "$direct" --direct

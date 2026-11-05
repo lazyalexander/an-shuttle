@@ -42,7 +42,10 @@ def check_outputs(attempt, parts):
         assert scene["source"] == request["source"] and scene["source"]["revision"] == 1
         assert scene["request_sha256"] == digest(attempt / "request.json")
         assert scene["kit_sha256"] == digest(instance / "kit/appearance.py")
-        assert scene["generated"] == (["grip"] if scene["drawing"] == "handwheel" else [])
+        expected_generated = ["grip"] if request["agent"]["model"] else []
+        assert scene["generated"] == expected_generated
+        if not expected_generated:
+            assert not (attempt / "appearance.py").exists()
         png_bytes = (attempt / "beauty.png").read_bytes()
         assert document.read("mergedimage.png") == png_bytes
         png = Image.open(BytesIO(png_bytes)).convert("RGBA")
@@ -73,13 +76,13 @@ def prepare(archive, work):
                     project / "native-spool.toml", runtime], check=True)
 
 
-def verify(work):
+def verify(work, direct=False):
     project = work / "project"
     for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
                         ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
         attempt, = (work / name).glob("drawing-*")
         check_outputs(attempt, parts)
-        if name == "handwheel":
+        if name == "handwheel" and (attempt / "appearance.py").exists():
             task = work / "task"
             call("an-loom", "task", project, task)
             candidate = attempt / "appearance.py"
@@ -90,7 +93,7 @@ def verify(work):
             for target in ["render.py", "../silk/render.py"]:
                 refused("an-agent-host", "spool-kit-update", attempt / "instance", target, candidate)
             assert digest(protected) == before
-    for name, expected in [("incomplete", "failed"), ("cancelled", "cancelled")]:
+    for name, expected in ([] if direct else [("incomplete", "failed"), ("cancelled", "cancelled")]):
         attempt, = (work / name).glob("drawing-*")
         status = call("an-agent-host", "spool-status", attempt / "instance", "paint")
         assert status["termination_confirmed"] and status["execution_status"] == expected
@@ -137,10 +140,11 @@ if __name__ == "__main__":
     parser.add_argument("archive_or_stage")
     parser.add_argument("work", type=Path)
     parser.add_argument("--krita", type=Path, help="Also import accepted ORAs into native KRA files and compare layers/pixels")
+    parser.add_argument("--direct", action="store_true", help="Verify the two zero-model CAD saves only")
     args = parser.parse_args()
     work = args.work.resolve(strict=True)
     if args.archive_or_stage == "verify":
-        verify(work)
+        verify(work, args.direct)
         if args.krita:
             verify_krita(work, args.krita.resolve(strict=True))
     else:
