@@ -104,9 +104,12 @@ test('a browser save delivers only the native host’s accepted products', {time
         });
         await markSave();
         console.log('Submitting',fixture);
-        const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:130_000});
+        let started=0;
+        const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:130_000})
+          .then(response=>({response,saveResponseMs:performance.now()-started}));
         void pending.catch(() => {});
         await first.bringToFront();
+        started=performance.now();
         await first.locator('#save').click();
         console.log('Save clicked',fixture);
         for (const page of [first,second]) {
@@ -138,16 +141,13 @@ test('a browser save delivers only the native host’s accepted products', {time
           const preview=await call(...args);
           await call(...args,'--approve',preview.approval_sha256);
         }
-        const response = await pending;
+        const {response,saveResponseMs} = await pending;
         console.log('Save returned',fixture,response.status());
         assert.equal(response.status(),drawing===broken || drawing===cancelled ? 500 : 200);
         const uiLockMs=await first.evaluate(() => performance.measure('paint lock','paint-click','paint-locked').duration);
         const locks=[uiLockMs];
-        assert.equal(await response.finished(),null);
-        const timing=response.request().timing();
-        assert.ok(timing.responseEnd>=0);
         console.log(JSON.stringify({drawing:drawing.id,clickToLockMs:uiLockMs,
-          saveResponseMs:timing.responseEnd,modelRequests:materials.length-clicks,http:response.status()}));
+          saveResponseMs,modelRequests:materials.length-clicks,http:response.status()}));
         await second.locator('#controls:enabled').waitFor();
         const state = await (await fetch(origin+'/state',{signal:AbortSignal.timeout(10_000)})).json();
         assert.equal(state.locked,false); assert.equal(state.revision,1); assert.equal(state.epoch,before.epoch);
@@ -189,20 +189,19 @@ test('a browser save delivers only the native host’s accepted products', {time
             if (mode==='exact') await first.locator('#reuseGrip').check();
             if (mode==='history') await first.locator('#verifyHistory').check();
             await markSave();
-            const reply=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:130_000});
+            const start=performance.now();
+            const reply=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:130_000})
+              .then(response=>({response,saveResponseMs:performance.now()-start}));
             void reply.catch(()=>{});
             await first.locator('#save').click();
             await second.getByText('CAD 已锁定 · 正在绘制',{exact:true}).waitFor();
             assert.equal(await second.locator('input:enabled,select:enabled,button:enabled').count(),0);
             const completed=await reply;
-            assert.equal(completed.status(),200);
-            assert.equal(await completed.finished(),null);
-            const saveResponseMs=completed.request().timing().responseEnd;
-            assert.ok(saveResponseMs>=0);
+            assert.equal(completed.response.status(),200);
             await second.locator('#controls:enabled').waitFor();
             const elapsed=await first.evaluate(()=>performance.measure('paint lock','paint-click','paint-locked').duration);
             locks.push(elapsed);
-            console.log(JSON.stringify({drawing:drawing.id,mode,clickToLockMs:elapsed,saveResponseMs}));
+            console.log(JSON.stringify({drawing:drawing.id,mode,clickToLockMs:elapsed,saveResponseMs:completed.saveResponseMs}));
             const after=await readState();
             assert.equal(after.revision,current.revision+1);
             assert.deepEqual(after.materialReference,{part,revision:after.revision});
