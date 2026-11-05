@@ -25,6 +25,13 @@ test('a browser save delivers only the native host’s accepted products', {time
   const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
   let lookups=0, proofs=0;
+  let holdAdoption=false;
+  let releaseAdoption=()=>{};
+  let modelReplied=()=>{};
+  let proxyFinished=()=>{};
+  const delayed=new Promise<void>(resolve=>{releaseAdoption=resolve;});
+  const received=new Promise<void>(resolve=>{modelReplied=resolve;});
+  const sent=new Promise<void>(resolve=>{proxyFinished=resolve;});
   const exchanges: {request: {prompt:string;model:string;format:{required:string[]}};response:string}[] = [];
   const model = createServer(async (request, response) => {
     try {
@@ -49,6 +56,15 @@ test('a browser save delivers only the native host’s accepted products', {time
             body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
           : JSON.stringify({choices:[{message:{content:JSON.stringify(answer)}}],
             usage:{prompt_tokens:10,completion_tokens:5}});
+        if (!action && holdAdoption) {
+          const reply=JSON.parse(JSON.parse(result).choices[0].message.content);
+          assert.deepEqual(reply,answer,'The delayed real model reply must be a valid adoption');
+          modelReplied();
+          await delayed;
+          response.end(result);
+          proxyFinished();
+          return;
+        }
         response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
         return;
       }
@@ -244,6 +260,32 @@ test('a browser save delivers only the native host’s accepted products', {time
             await expired.text();
             current=after;
           }
+          if (hostAgent && liveModel && drawing===wheel) {
+            holdAdoption=true;
+            const priorFolders=new Set(await readdir(output));
+            const priorOpens=opened.length;
+            await first.locator('#verifyHistory').check();
+            const cancelledSave=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:130_000});
+            void cancelledSave.catch(()=>{});
+            await first.locator('#save').click();
+            await Promise.race([received,delay(125_000,undefined,{ref:false}).then(()=>{throw Error('No valid late model reply');})]);
+            const cancellation=first.waitForResponse(r=>r.url()===origin+'/cancel-material');
+            await first.locator('#cancelMaterial').click();
+            assert.equal((await cancellation).status(),202);
+            releaseAdoption();
+            await sent;
+            assert.equal((await cancelledSave).status(),500);
+            const settled=await readState();
+            assert.equal(settled.artifact,null);
+            assert.equal(settled.locked,false);
+            assert.equal(opened.length,priorOpens);
+            const created=(await readdir(output)).filter(entry=>!priorFolders.has(entry));
+            assert.equal(created.length,1);
+            const files=await readdir(join(output,created[0]));
+            for (const product of ['painting.ora','beauty.png','accepted.json','instance'])
+              assert.ok(!files.includes(product),product+' was created after cancelling lookup');
+            console.log('Live Ollama adoption arrived after cancellation; no render started');
+          }
           await writeFile(join(root,drawing.id+'-lock-timings.json'),JSON.stringify(locks));
         }
       } catch (error) {
@@ -258,6 +300,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         }
         throw error;
       } finally {
+        releaseAdoption();
         await context.close();
         server.closeAllConnections();
         await new Promise<void>(done => server.close(() => done()));

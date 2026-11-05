@@ -78,7 +78,7 @@ def verify(work):
     for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
                         ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
         attempts = {json.loads((candidate / "saved.json").read_text())["source"]["revision"]: candidate
-                    for candidate in (work / name).glob("drawing-*")}
+                    for candidate in (work / name).glob("drawing-*") if (candidate / "saved.json").is_file()}
         attempt = attempts[1]
         check_outputs(attempt, parts)
         if 2 in attempts:
