@@ -27,7 +27,7 @@ def refused(*args):
     assert result.returncode != 0, "Expected host refusal"
 
 
-def check_outputs(attempt, parts):
+def check_outputs(attempt, parts, revision=1):
     instance = attempt / "instance"
     request = json.loads((attempt / "request.json").read_text())
     saved = json.loads((attempt / "saved.json").read_text())
@@ -39,11 +39,11 @@ def check_outputs(attempt, parts):
         assert item["binding"]["content_sha256"] == digest(attempt / item["path"])
     with ZipFile(attempt / "painting.ora") as document:
         scene = json.loads(document.read("data/scene.json"))
-        assert scene["source"] == request["source"] and scene["source"]["revision"] == 1
+        assert scene["source"] == request["source"] and scene["source"]["revision"] == revision
         assert scene["request_sha256"] == digest(attempt / "request.json")
         assert scene["kit_sha256"] == digest(instance / "kit/appearance.py")
-        expected_generated = ["grip"] if request["agent"]["model"] else []
-        assert scene["generated"] == expected_generated
+        expected_generated = set(parts) - request["scene"]["materials"].keys()
+        assert set(scene["generated"]) == expected_generated
         if not expected_generated:
             assert not (attempt / "appearance.py").exists()
         png_bytes = (attempt / "beauty.png").read_bytes()
@@ -80,9 +80,40 @@ def verify(work, direct=False):
     project = work / "project"
     for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
                         ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
-        attempt, = (work / name).glob("drawing-*")
+        attempts = {json.loads((candidate / "saved.json").read_text())["source"]["revision"]: candidate
+                    for candidate in (work / name).glob("drawing-*")}
+        attempt = attempts[1]
         check_outputs(attempt, parts)
-        if name == "handwheel" and (attempt / "appearance.py").exists():
+        if direct:
+            assert set(attempts) == {1}
+            request = json.loads((attempt / "request.json").read_text())
+            assert request["agent"]["model"] is None
+            assert set(request["scene"]["materials"]) == set(parts)
+            continue
+        if 2 in attempts:
+            check_outputs(attempts[2], parts, 2)
+        for revision in (3, 4):
+            if revision not in attempts:
+                continue
+            current = attempts[revision]
+            check_outputs(current, parts, revision)
+            source = attempts[revision - 1]
+            previous = json.loads((source / "accepted.json").read_text())
+            reference = next(item["binding"] for item in previous["outputs"] if item["path"] == "painting.ora")
+            request = json.loads((current / "request.json").read_text())
+            assert request["agent"]["model"] is None
+            with ZipFile(source / "painting.ora") as before, ZipFile(current / "painting.ora") as after:
+                original = json.loads(before.read("data/scene.json"))
+                reused = json.loads(after.read("data/scene.json"))
+            evidence = request["material_evidence"]
+            part = "grip" if name == "handwheel" else "movingJaw"
+            assert evidence["part"] == part
+            assert evidence["source"] == original["source"]
+            assert evidence["request_sha256"] == original["request_sha256"]
+            assert evidence["artifact"]["revision"] == reference["revision"]
+            assert evidence["artifact"]["content_sha256"] == reference["content_sha256"]
+            assert evidence["material"] == original["materials"][part] == reused["materials"][part]
+        if name == "handwheel":
             task = work / "task"
             call("an-loom", "task", project, task)
             candidate = attempt / "appearance.py"
@@ -93,7 +124,16 @@ def verify(work, direct=False):
             for target in ["render.py", "../silk/render.py"]:
                 refused("an-agent-host", "spool-kit-update", attempt / "instance", target, candidate)
             assert digest(protected) == before
-    for name, expected in ([] if direct else [("incomplete", "failed"), ("cancelled", "cancelled")]):
+    if direct:
+        return
+    timings = [work / (name + "-lock-timings.json") for name in ("vise", "handwheel")]
+    if any(path.exists() for path in timings):
+        samples = sorted(value for path in timings for value in json.loads(path.read_text()))
+        assert len(samples) == 8
+        # The nearest-rank p95 is the maximum of eight samples.
+        print(json.dumps({"click_to_lock_ms": samples, "p95_ms": samples[-1]}), flush=True)
+        assert samples[-1] <= 180
+    for name, expected in [("incomplete", "failed"), ("cancelled", "cancelled")]:
         attempt, = (work / name).glob("drawing-*")
         status = call("an-agent-host", "spool-status", attempt / "instance", "paint")
         assert status["termination_confirmed"] and status["execution_status"] == expected

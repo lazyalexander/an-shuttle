@@ -66,7 +66,7 @@ function preview() {
   }
   byId('gapValue').textContent=parameterOf(s)+parameter.unit;
 }
-interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string}
+interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string;materialReference:{part:string;revision:number}|null}
 let state:State|null=null, posting=false, connected=false;
 const cut = document.querySelector<HTMLButtonElement>('#cut')!;
 function lock(){
@@ -75,7 +75,12 @@ function lock(){
 }
 function update(next:State) {
   if (drawing.id!==next.drawingId) {controls.disabled=true;location.reload();return;}
-  if(!state || state.epoch!==next.epoch || state.revision!==next.revision) {
+  const revisionChanged=!state || state.epoch!==next.epoch || state.revision!==next.revision;
+  state=next;
+  lock();
+  if(revisionChanged) {
+    input('reuseGrip').checked=false;
+    input('verifyHistory').checked=false;
     input('gap').value=String(parameterOf(next.scene));
     input('direction').value=next.direction ?? '';
     input('yaw').value=String(next.scene.camera?.yaw ?? defaultCamera.yaw);
@@ -89,7 +94,11 @@ function update(next:State) {
     }
     preview();
   }
-  state=next;lock();byId('status').textContent=next.message;byId('version').textContent='CAD · 修订 '+next.revision;
+  byId('reuseGripOption').hidden=next.materialReference===null;
+  byId('historyOption').hidden=next.materialReference===null;
+  byId('reuseGripLabel').textContent=next.materialReference
+    ? '读取已获批修订 '+next.materialReference.revision+' 的'+drawing.parts[next.materialReference.part].label+'材质' : '';
+  byId('status').textContent=next.message;byId('version').textContent='CAD · 修订 '+next.revision;
   const link=document.querySelector<HTMLAnchorElement>('#download')!;
   cut.hidden=!next.artifact||!next.canCut;
   cut.textContent=next.cutStatus==='sent'?'已送交切割 spool':next.cutStatus==='sending'?'正在送交…':'送交切割 spool';
@@ -97,19 +106,34 @@ function update(next:State) {
   if(next.artifact){link.download=drawing.id+'.ora';link.href=next.artifact+'/painting.ora';document.querySelector<HTMLImageElement>('#asset')!.src=next.artifact+'/beauty.png';}
 }
 controls.addEventListener('input',preview);
-const events=new EventSource('/events');
-events.onmessage=e=>{connected=true;update(JSON.parse(e.data));};
-events.onerror=()=>{connected=false;lock();byId('status').textContent='连接中断 · CAD 已锁定';};
+function subscribe() {
+  const events=new EventSource('/events');
+  events.onmessage=e=>{connected=true;update(JSON.parse(e.data));};
+  events.onerror=()=>{connected=false;lock();byId('status').textContent='连接中断 · CAD 已锁定';};
+  return events;
+}
+let events=subscribe();
+input('reuseGrip').onchange=()=>{if(input('reuseGrip').checked) input('verifyHistory').checked=false;};
+input('verifyHistory').onchange=()=>{if(input('verifyHistory').checked) input('reuseGrip').checked=false;};
 byId('save').onclick=async()=>{
   if(controls.disabled || !state)return;
-  const request={epoch:state.epoch,revision:state.revision,scene:draft(),direction:input('direction').value};
   posting=true;lock();byId('error').textContent='';
-  try{
+  try {
+    const scene=draft();
+    const reference=state.materialReference;
+    const reuseMaterial=input('reuseGrip').checked ? reference?.revision : undefined;
+    const materialHistory=input('verifyHistory').checked && reference ? 'last-accepted' : undefined;
+    if (reference && (reuseMaterial!==undefined || materialHistory)) delete scene.materials[reference.part];
+    const request={epoch:state.epoch,revision:state.revision,scene,direction:input('direction').value,reuseMaterial,materialHistory};
     const reply=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});
-    if(!reply.ok)throw Error(await reply.text());
-    // The event stream owns shared state across all open CAD windows.
-  }catch(error){byId('error').textContent=String(error);}
-  finally{posting=false;lock();}
+    if(!reply.ok) byId('error').textContent=await reply.text();
+  } catch(error) {
+    byId('error').textContent=String(error);
+    // An interrupted POST may still have been admitted. Wait for the server's state.
+    connected=false;
+    events.close();
+    events=subscribe();
+  } finally {posting=false;lock();}
 };
 
 cut.onclick=async()=>{

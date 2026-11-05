@@ -1,5 +1,5 @@
 import {execFile} from 'node:child_process';
-import {mkdir, realpath, rename, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, realpath, rename, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
@@ -27,11 +27,15 @@ async function command<T>(binary: string, args: string[]): Promise<T> {
   }
 }
 
-async function selectHost(): Promise<Host> {
+async function hostBinary() {
   const selected=process.env.AN_AGENT_HOST_BIN ?? 'an-agent-host';
   // The supervisor binds its own executable. Resolve operator-provided launchers before the preview.
   const located=selected.includes('/') ? selected : (await execute('/usr/bin/which',[selected])).stdout.trim();
-  const binary=await realpath(located);
+  return realpath(located);
+}
+
+async function selectHost(): Promise<Host> {
+  const binary=await hostBinary();
   return <T>(...args: string[]) => command<T>(binary,args);
 }
 
@@ -94,4 +98,28 @@ export async function renderWithHost(folder: string, input: string, candidate: s
   // The download route requires the ORA. Move it last, only after both fixed checkouts succeeded.
   for (const name of products) await rename(join(staged,name),join(folder,name));
   return join(folder,'painting.ora');
+}
+
+export interface MaterialEvidence {
+  schema: 'cad-material-evidence-v1';
+  part: string;
+  source: {document:string;epoch:string;revision:number};
+  artifact: {revision:string;release:string};
+  material: {finish:string;color:string;metallic:number;roughness:number};
+}
+
+export async function readPreviousMaterial(reader:string, folder:string, document:string,
+                                       epoch:string, revision:number, part:string):Promise<MaterialEvidence> {
+  const accepted:Inventory=JSON.parse(await readFile(join(folder,'accepted.json'),'utf8'));
+  const selected=accepted.outputs.find(output=>output.path==='painting.ora')?.binding.revision;
+  if (!selected) throw Error('Missing accepted ORA revision');
+  const result=await command<MaterialEvidence>(process.env.PYTHON_BIN ?? 'python3',
+    ['-B',reader,'--host',await hostBinary(),'--instance',join(folder,'instance'),'--run',run,
+      '--paint-release',accepted.release,'--artifact-revision',selected,
+      '--document',document,'--epoch',epoch,'--revision',String(revision),'--part',part]);
+  if (result.schema!=='cad-material-evidence-v1' || result.part!==part ||
+      result.source.document!==document || result.source.epoch!==epoch || result.source.revision!==revision ||
+      result.artifact.release!==accepted.release || result.artifact.revision!==selected)
+    throw Error('Material evidence does not match the selected acceptance');
+  return result;
 }
