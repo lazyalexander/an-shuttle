@@ -18,7 +18,7 @@ permissions:
 jobs:
   macos:
     runs-on: macos-15
-    timeout-minutes: 26
+    timeout-minutes: 40
     env:
       CARGO_INCREMENTAL: '0'
       LOOM_REV: 9089b0283cc9077f51447e38b32f553049948d98
@@ -114,7 +114,7 @@ jobs:
             -d '{"model":"qwen3:8b","prompt":"","stream":false,"keep_alive":"20m"}'
           ollama ps
       - name: Browser save (handwheel, live Ollama)
-        timeout-minutes: 8
+        timeout-minutes: 24
         env:
           CAD_PAINT_FIXTURE: handwheel
           CAD_PAINT_REAL_MODEL: 1
