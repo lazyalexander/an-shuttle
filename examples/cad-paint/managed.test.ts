@@ -53,9 +53,15 @@ test('a browser save delivers only the native host’s accepted products', {time
           : {adopt:true,evidence_id:data.evidence_id};
         const result=liveModel
           ? await fetch(new URL(request.url,upstream),{method:'POST',headers:{'Content-Type':'application/json'},
-            body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
+            body:JSON.stringify({...input,reasoning_effort:'none',temperature:0,response_format:{type:'json_object'}}),
+            signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
           : JSON.stringify({choices:[{message:{content:JSON.stringify(answer)}}],
             usage:{prompt_tokens:10,completion_tokens:5}});
+        if (liveModel) {
+          const modelReply=JSON.parse(result);
+          console.log(JSON.stringify({stage:packet.source,finishReason:modelReply.choices[0].finish_reason,
+            usage:modelReply.usage}));
+        }
         if (!action && holdAdoption) {
           const reply=JSON.parse(JSON.parse(result).choices[0].message.content);
           assert.deepEqual(reply,answer,'The delayed real model reply must be a valid adoption');
