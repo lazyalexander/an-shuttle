@@ -155,6 +155,25 @@ test('a browser save delivers only the native host’s accepted products', {time
           assert.deepEqual(brief.supplied,state.scene.materials);
           assert.deepEqual(brief.missing,{grip:{label:drawing.parts.grip.label}});
           assert.deepEqual(Object.keys(brief).sort(),['description','direction','missing','supplied']);
+          if (process.env.CAD_MATERIAL_READER) {
+            assert.equal(state.gripReference,1);
+            const stale=await fetch(origin+'/save',{method:'POST',headers:{origin,'content-type':'application/json'},
+              body:JSON.stringify({...state,reuseGrip:0}),signal:AbortSignal.timeout(10_000)});
+            assert.equal(stale.status,409);
+            await stale.text();
+            await first.locator('#reuseGrip').check();
+            const reused=first.waitForResponse(response=>response.url()===origin+'/save',{timeout:120_000});
+            void reused.catch(()=>{});
+            await first.locator('#save').click();
+            await second.getByText('CAD 已锁定 · 正在绘制',{exact:true}).waitFor();
+            assert.equal((await reused).status(),200);
+            await second.locator('#controls:enabled').waitFor();
+            const after=await (await fetch(origin+'/state',{signal:AbortSignal.timeout(10_000)})).json();
+            assert.equal(after.revision,2);
+            assert.equal(after.gripReference,2);
+            assert.notEqual(after.artifact,state.artifact);
+            assert.equal(materials.length-clicks,1);
+          }
         }
       } catch (error) {
         const route = await fetch(origin+'/state').then(r => r.json()).catch(() => null);

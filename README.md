@@ -121,3 +121,15 @@ It verifies native file import/save, not GUI brush editing. A launch request alo
 is insufficient. The former `packPainting` compatibility entry is retired;
 the installed domain spool already produces and validates the ORA, so the Krita
 bridge no longer carries Python packaging glue or a domain-package peer dependency.
+
+### Reuse the last accepted handwheel grip
+
+For the managed handwheel studio, set `CAD_MATERIAL_READER` to
+`examples/cad-material-evidence/read_material.py` in a reviewed an-loom
+checkout. Use the normal managed host and Python setup. After the first
+accepted save in the current studio session, choose the displayed approved
+revision's grip finish and save again.
+
+The host reads the exact accepted ORA, preserves the grip's finish, color,
+metallic and roughness, and records the source revision in the new request.
+The reuse path calls the material model only for other missing parts.
