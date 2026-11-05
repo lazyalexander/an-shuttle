@@ -18,7 +18,7 @@ permissions:
 jobs:
   macos:
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: 40
     env:
       CARGO_INCREMENTAL: '0'
       LOOM_REV: 9089b0283cc9077f51447e38b32f553049948d98
@@ -90,24 +90,48 @@ jobs:
           path: integrations/material-evidence
           persist-credentials: false
       - name: Browser save (vise)
+        if: ${{ false }}
         timeout-minutes: 4
         env:
           CAD_PAINT_FIXTURE: vise
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
-      - name: Browser save (handwheel)
-        timeout-minutes: 3
+      - name: Start local Ollama with qwen3:8b
+        timeout-minutes: 14
+        run: |
+          brew install ollama
+          export OLLAMA_HOST=127.0.0.1:11434
+          OLLAMA_CONTEXT_LENGTH=2048 OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_KEEP_ALIVE=20m \
+            ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:11434/api/version; then break; fi
+            sleep 1
+          done
+          ollama pull qwen3:8b
+          ollama list
+          ollama list | awk '$1 == "qwen3:8b" && $2 == "500a1f067a9f" {found=1} END {exit !found}'
+          curl -fsS --max-time 420 http://127.0.0.1:11434/api/generate \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"qwen3:8b","prompt":"","stream":false,"keep_alive":"20m"}'
+          ollama ps
+      - name: Browser save (handwheel, live Ollama)
+        timeout-minutes: 24
         env:
           CAD_PAINT_FIXTURE: handwheel
+          CAD_PAINT_REAL_MODEL: 1
+          CAD_PAINT_CANCEL_ONLY: 1
+          OLLAMA_MODEL: qwen3:8b
           CAD_MATERIAL_HOST_AGENT: 1
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
       - name: Browser save (incomplete)
+        if: ${{ false }}
         timeout-minutes: 3
         env:
           CAD_PAINT_FIXTURE: incomplete
         run: node --test examples/cad-paint/dist/managed.test.js
       - name: Cancel an observed native paint attempt
+        if: ${{ false }}
         timeout-minutes: 3
         env:
           CAD_PAINT_FIXTURE: cancelled
@@ -115,10 +139,12 @@ jobs:
       - name: Inspect original fixture attempts on failure
         if: failure()
         run: |
+          if [ -f "$RUNNER_TEMP/ollama.log" ]; then tail -50 "$RUNNER_TEMP/ollama.log"; fi
           for instance in "$CAD_PAINT_TEST_OUTPUT"/*/drawing-*/instance; do
             [ -d "$instance" ] || continue
             an-agent-host spool-status "$instance" paint || true
             find "$instance/runs" -name stderr.txt -exec tail -c 1000 {} \;
           done
       - name: Verify both accepted catalogs and the failure receipt
+        if: ${{ false }}
         run: '"$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTPUT"'

@@ -78,7 +78,7 @@ def verify(work):
     for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
                         ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
         attempts = {json.loads((candidate / "saved.json").read_text())["source"]["revision"]: candidate
-                    for candidate in (work / name).glob("drawing-*")}
+                    for candidate in (work / name).glob("drawing-*") if (candidate / "saved.json").is_file()}
         attempt = attempts[1]
         check_outputs(attempt, parts)
         if 2 in attempts:
@@ -107,13 +107,14 @@ def verify(work):
         if name == "handwheel":
             task = work / "task"
             call("an-loom", "task", project, task)
-            candidate = attempt / "appearance.py"
+            kit_attempt = next(path for path in attempts.values() if (path / "appearance.py").is_file())
+            candidate = kit_attempt / "appearance.py"
             received = call("an-loom", "receive-task", task, "kit/appearance.py", candidate)
-            assert received["sha256"] == digest(candidate) == digest(attempt / "instance/kit/appearance.py")
-            protected = attempt / "native-release/silk/render.py"
+            assert received["sha256"] == digest(candidate) == digest(kit_attempt / "instance/kit/appearance.py")
+            protected = kit_attempt / "native-release/silk/render.py"
             before = digest(protected)
             for target in ["render.py", "../silk/render.py"]:
-                refused("an-agent-host", "spool-kit-update", attempt / "instance", target, candidate)
+                refused("an-agent-host", "spool-kit-update", kit_attempt / "instance", target, candidate)
             assert digest(protected) == before
     timings = [work / (name + "-lock-timings.json") for name in ("vise", "handwheel")]
     if any(path.exists() for path in timings):
