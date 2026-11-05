@@ -22,17 +22,31 @@ test('a browser save delivers only the native host’s accepted products', {time
   const upstream=process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
   const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
+  let lookups=0, proofs=0;
   const exchanges: {request: {prompt:string;model:string;format:{required:string[]}};response:string}[] = [];
   const model = createServer(async (request, response) => {
     try {
       let message = '';
       for await (const chunk of request) message += chunk;
       const input=JSON.parse(message);
+      if (request.url==='/api/chat') {
+        const action=input.tools.length===1;
+        if (action) lookups++; else proofs++;
+        const result=liveModel
+          ? await fetch(new URL('/api/chat',upstream),{method:'POST',headers:{'Content-Type':'application/json'},
+            body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
+          : JSON.stringify({message:action
+            ? {role:'assistant',content:'',tool_calls:[{function:{name:'read_approved_material',arguments:JSON.parse(input.messages[1].content)}}]}
+            : {role:'assistant',content:input.messages.at(-1).content}});
+        response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
+        return;
+      }
       materials.push(input.format.required);
       const result=liveModel
         ? await fetch(new URL('/api/generate',upstream),{method:'POST',headers:{'Content-Type':'application/json'},
           body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
-        : JSON.stringify({response:JSON.stringify({grip:{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}})});
+        : JSON.stringify({response:JSON.stringify(Object.fromEntries(input.format.required.map((part:string)=>
+          [part,{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}])) )});
       exchanges.push({request:input,response:result});
       response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
     } catch(error) {response.writeHead(502);response.end(String(error));}
@@ -78,7 +92,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         assert.equal((await post('http://untrusted.invalid',before)).status,403);
         assert.equal((await post(origin,{...before,revision:before.revision+1})).status,409);
         await first.locator('#direction').fill(direction);
-        await first.evaluate(() => {
+        const markSave=()=>first.evaluate(() => {
           const controls=document.querySelector<HTMLFieldSetElement>('#controls')!;
           document.querySelector('#save')!.addEventListener('click',() => {
             performance.mark('paint-click');
@@ -88,6 +102,7 @@ test('a browser save delivers only the native host’s accepted products', {time
             observer.observe(controls,{attributes:true,attributeFilter:['disabled']});
           },{capture:true,once:true});
         });
+        await markSave();
         console.log('Submitting',fixture);
         const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:130_000});
         void pending.catch(() => {});
@@ -127,6 +142,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         console.log('Save returned',fixture,response.status());
         assert.equal(response.status(),drawing===broken || drawing===cancelled ? 500 : 200);
         const uiLockMs=await first.evaluate(() => performance.measure('paint lock','paint-click','paint-locked').duration);
+        const locks=[uiLockMs];
         const timing=response.request().timing();
         console.log(JSON.stringify({drawing:drawing.id,clickToLockMs:uiLockMs,
           saveResponseMs:timing.responseEnd,modelRequests:materials.length-clicks,http:response.status()}));
@@ -155,25 +171,44 @@ test('a browser save delivers only the native host’s accepted products', {time
           assert.deepEqual(brief.supplied,state.scene.materials);
           assert.deepEqual(brief.missing,{grip:{label:drawing.parts.grip.label}});
           assert.deepEqual(Object.keys(brief).sort(),['description','direction','missing','supplied']);
-          if (process.env.CAD_MATERIAL_READER) {
-            assert.equal(state.gripReference,1);
-            const stale=await fetch(origin+'/save',{method:'POST',headers:{origin,'content-type':'application/json'},
-              body:JSON.stringify({...state,reuseGrip:0}),signal:AbortSignal.timeout(10_000)});
-            assert.equal(stale.status,409);
-            await stale.text();
-            await first.locator('#reuseGrip').check();
-            const reused=first.waitForResponse(response=>response.url()===origin+'/save',{timeout:120_000});
-            void reused.catch(()=>{});
+        }
+        if ((drawing===wheel || drawing===benchVise) && process.env.CAD_MATERIAL_READER) {
+          const part=drawing===wheel ? 'grip' : 'movingJaw';
+          assert.deepEqual(state.materialReference,{part,revision:1});
+          const readState=async()=> (await first.request.get(origin+'/state')).json();
+          const stale=await post(origin,{...state,reuseMaterial:0});
+          assert.equal(stale.status,409);
+          await stale.text();
+
+          let current=state;
+          for (const mode of ['complement','exact','history']) {
+            const generated=materials.length;
+            if (mode==='complement') await first.locator('#'+part).selectOption(drawing===wheel ? '0' : '');
+            if (mode==='exact') await first.locator('#reuseGrip').check();
+            if (mode==='history') await first.locator('#verifyHistory').check();
+            await markSave();
+            const reply=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:130_000});
+            void reply.catch(()=>{});
             await first.locator('#save').click();
             await second.getByText('CAD 已锁定 · 正在绘制',{exact:true}).waitFor();
-            assert.equal((await reused).status(),200);
+            assert.equal(await second.locator('input:enabled,select:enabled,button:enabled').count(),0);
+            assert.equal((await reply).status(),200);
             await second.locator('#controls:enabled').waitFor();
-            const after=await (await fetch(origin+'/state',{signal:AbortSignal.timeout(10_000)})).json();
-            assert.equal(after.revision,2);
-            assert.equal(after.gripReference,2);
-            assert.notEqual(after.artifact,state.artifact);
-            assert.equal(materials.length-clicks,1);
+            const elapsed=await first.evaluate(()=>performance.measure('paint lock','paint-click','paint-locked').duration);
+            locks.push(elapsed);
+            const after=await readState();
+            assert.equal(after.revision,current.revision+1);
+            assert.deepEqual(after.materialReference,{part,revision:after.revision});
+            assert.notEqual(after.artifact,current.artifact);
+            assert.equal(materials.length-generated,mode==='complement' && drawing===benchVise ? 1 : 0);
+            assert.equal(lookups,mode==='history' ? 1 : 0);
+            assert.equal(proofs,lookups);
+            const expired=await post(origin,current);
+            assert.equal(expired.status,409);
+            await expired.text();
+            current=after;
           }
+          await writeFile(join(root,drawing.id+'-lock-timings.json'),JSON.stringify(locks));
         }
       } catch (error) {
         const route = await fetch(origin+'/state').then(r => r.json()).catch(() => null);
@@ -193,6 +228,7 @@ test('a browser save delivers only the native host’s accepted products', {time
       }
     });
   }
-  assert.deepEqual(materials,fixture==='handwheel' ? [['grip']] : []);
+  assert.deepEqual(materials,fixture==='handwheel' ? [['grip']] :
+    fixture==='vise' && process.env.CAD_MATERIAL_READER ? [['movingJaw']] : []);
   await writeFile(join(root,fixture+'-model-exchange.local.json'),JSON.stringify({liveModel,exchanges}));
 });

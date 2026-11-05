@@ -100,26 +100,26 @@ export async function renderWithHost(folder: string, input: string, candidate: s
   return join(folder,'painting.ora');
 }
 
-export interface GripEvidence {
+export interface MaterialEvidence {
   schema: 'cad-material-evidence-v1';
-  part: 'grip';
+  part: string;
   source: {document:string;epoch:string;revision:number};
   artifact: {revision:string;release:string};
   material: {finish:string;color:string;metallic:number;roughness:number};
 }
 
-export async function readPreviousGrip(reader:string, folder:string, document:string,
-                                       epoch:string, revision:number):Promise<GripEvidence> {
+export async function readPreviousMaterial(reader:string, folder:string, document:string,
+                                       epoch:string, revision:number, part:string):Promise<MaterialEvidence> {
   const accepted:Inventory=JSON.parse(await readFile(join(folder,'accepted.json'),'utf8'));
   const selected=accepted.outputs.find(output=>output.path==='painting.ora')?.binding.revision;
   if (!selected) throw Error('Missing accepted ORA revision');
-  const result=await command<GripEvidence>(process.env.PYTHON_BIN ?? 'python3',
+  const result=await command<MaterialEvidence>(process.env.PYTHON_BIN ?? 'python3',
     ['-B',reader,'--host',await hostBinary(),'--instance',join(folder,'instance'),'--run',run,
       '--paint-release',accepted.release,'--artifact-revision',selected,
-      '--document',document,'--epoch',epoch,'--revision',String(revision),'--part','grip']);
-  if (result.schema!=='cad-material-evidence-v1' || result.part!=='grip' ||
+      '--document',document,'--epoch',epoch,'--revision',String(revision),'--part',part]);
+  if (result.schema!=='cad-material-evidence-v1' || result.part!==part ||
       result.source.document!==document || result.source.epoch!==epoch || result.source.revision!==revision ||
       result.artifact.release!==accepted.release || result.artifact.revision!==selected)
-    throw Error('Grip evidence does not match the selected acceptance');
+    throw Error('Material evidence does not match the selected acceptance');
   return result;
 }

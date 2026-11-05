@@ -22,7 +22,7 @@ npm run studio
 
 Visit http://127.0.0.1:4183. Adjust the jaw opening, camera and finishes. Click **保存并绘制**. The submitting CAD window freezes immediately. The server locks the saved revision before awaiting any work, broadcasts the lock to every connected CAD window and rejects concurrent or stale saves. A disconnected window stays disabled until it reconnects. The studio publishes both accepted artifacts on success and releases the CAD lock before waiting for Krita to open. A confirmed terminal failure releases the lock with no download. If the waiting CLI loses its result, the studio keeps the lock and checks the same supervised run for termination.
 
-The spool uses the provided camera and light. Omit the camera for the default three-quarter view, or omit the light for a random azimuth. Assign all four finishes to render offline. To ask a model for missing finishes, start local Ollama with a downloaded model that supports structured JSON. Set `OLLAMA_MODEL` to its name (default `gemma4:e4b`) and optionally `OLLAMA_HOST` to its base URL (default `http://127.0.0.1:11434`). Model failures are reported in the CAD interface.
+The spool uses the provided camera and light. Omit the camera for the default three-quarter view, or omit the light for a random azimuth. Assign all four finishes to render offline. To ask a model for missing finishes, start local Ollama with a downloaded model that supports structured JSON. Set `OLLAMA_MODEL` to its name (default `qwen3:8b`) and optionally `OLLAMA_HOST` to its base URL (default `http://127.0.0.1:11434`). Model failures are reported in the CAD interface.
 
 Mitsuba path traces the saved geometry on the CPU. A separate visibility pass assigns visible pixels to the base, hardware, fixed jaw and moving jaw. Every delivery checks that the four layers composite byte-for-byte to the transparent PNG. The standalone ORA contains the resolved scene recipe. For finer editing, set `CUT_SPOOL_BIN` to a local cutting-spool executable before starting the studio. **送交切割 spool** passes the absolute ORA path as one argument. Exit zero acknowledges delivery. Handoff is optional and CAD stays editable while the cutter runs. Each save gets its own folder under `paintings/`. Shuttle requests that local Krita open the document and also exposes a download. Set `KRITA_BIN` to select the local painting app.
 
@@ -122,14 +122,16 @@ is insufficient. The former `packPainting` compatibility entry is retired;
 the installed domain spool already produces and validates the ORA, so the Krita
 bridge no longer carries Python packaging glue or a domain-package peer dependency.
 
-### Reuse the last accepted handwheel grip
+### Reuse accepted material from the current CAD session
 
-For the managed handwheel studio, set `CAD_MATERIAL_READER` to
+For managed saves, set `CAD_MATERIAL_READER` to
 `examples/cad-material-evidence/read_material.py` in a reviewed an-loom
-checkout. Use the normal managed host and Python setup. After the first
-accepted save in the current studio session, choose the displayed approved
-revision's grip finish and save again.
+checkout. After a successful save, the editor offers the handwheel grip
+or the vise moving jaw from the last accepted revision.
 
-The host reads the exact accepted ORA, preserves the grip's finish, color,
-metallic and roughness, and records the source revision in the new request.
-The reuse path calls the material model only for other missing parts.
+Selecting the displayed revision reads the accepted ORA directly. Selecting
+historical verification asks local Ollama to request that one approved record
+and return matching evidence. The adapter checks the document, part and
+revision before reading, and validates the model's proof before rendering.
+A rejected or unavailable proof fails the save. Both paths record the source
+revision and exact artifact binding in the new request.
