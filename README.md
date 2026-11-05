@@ -62,6 +62,13 @@ A CAD save carries an intent, a fixed document revision, its observations and op
 
 The [CAD painting reference package in Loom](https://github.com/lazyalexander/an-loom/tree/821176910ceba06fa5fa0b6036d7f4d09291c2d1/examples/cad-paint) owns the domain source. `npm ci` installs v0.1.0 from an immutable commit URL and verifies the distribution against the integrity in `package-lock.json`. Both CAD models use this package. The macOS acceptance exports the exact Loom archive included in it. Its agent proposes a private `kit/appearance.py` for this attempt. Its read-only silk owns the render, PNG/ORA shape and pixel reconstruction. The resulting document records the input and selected kit digests. For each managed save, the studio exports the pinned archive into a fresh native instance. It applies an appearance kit only when materials are missing. The host supervises one run, accepts the outputs and checks out the two fixed revisions in its catalog. The studio records this inventory in `accepted.json` and makes the ORA visible after both checkouts. Each attempt retains its `saved.json`, `request.json` and instance for inspection. For a lost supervisor response, `an-agent-host spool-status <attempt>/instance paint` inspects the same attempt. The macOS acceptance exercises this path through two browser tabs. Further part cutting is a new attempt with its own input.
 
+The [content label contract](https://github.com/lazyalexander/an-loom/blob/main/docs/spool-code.md)
+labels all selected spool release files silk, including historical `kit/` paths.
+Approved working copies and generated work are kit. Selected skill and agent
+instructions stay protected; label changes do not authorize execution. Accepted
+paintings belong to retained artifact custody, not disposable kit scratch. Current
+host profiles still limit editable slots; this does not enable arbitrary self-editing.
+
 ## Workspaces
 
 | Workspace | Responsibility |
