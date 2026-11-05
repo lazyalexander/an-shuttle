@@ -66,7 +66,7 @@ function preview() {
   }
   byId('gapValue').textContent=parameterOf(s)+parameter.unit;
 }
-interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string}
+interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string;gripReference:number|null}
 let state:State|null=null, posting=false, connected=false;
 const cut = document.querySelector<HTMLButtonElement>('#cut')!;
 function lock(){
@@ -76,6 +76,7 @@ function lock(){
 function update(next:State) {
   if (drawing.id!==next.drawingId) {controls.disabled=true;location.reload();return;}
   if(!state || state.epoch!==next.epoch || state.revision!==next.revision) {
+    input('reuseGrip').checked=false;
     input('gap').value=String(parameterOf(next.scene));
     input('direction').value=next.direction ?? '';
     input('yaw').value=String(next.scene.camera?.yaw ?? defaultCamera.yaw);
@@ -89,7 +90,10 @@ function update(next:State) {
     }
     preview();
   }
-  state=next;lock();byId('status').textContent=next.message;byId('version').textContent='CAD · 修订 '+next.revision;
+  state=next;
+  byId('reuseGripOption').hidden=next.gripReference===null;
+  byId('reuseGripLabel').textContent='沿用已获批修订 '+next.gripReference+' 的握柄材质';
+  lock();byId('status').textContent=next.message;byId('version').textContent='CAD · 修订 '+next.revision;
   const link=document.querySelector<HTMLAnchorElement>('#download')!;
   cut.hidden=!next.artifact||!next.canCut;
   cut.textContent=next.cutStatus==='sent'?'已送交切割 spool':next.cutStatus==='sending'?'正在送交…':'送交切割 spool';
@@ -102,7 +106,10 @@ events.onmessage=e=>{connected=true;update(JSON.parse(e.data));};
 events.onerror=()=>{connected=false;lock();byId('status').textContent='连接中断 · CAD 已锁定';};
 byId('save').onclick=async()=>{
   if(controls.disabled || !state)return;
-  const request={epoch:state.epoch,revision:state.revision,scene:draft(),direction:input('direction').value};
+  const scene=draft();
+  const reuseGrip=input('reuseGrip').checked ? state.gripReference ?? undefined : undefined;
+  if (reuseGrip!==undefined) delete scene.materials.grip;
+  const request={epoch:state.epoch,revision:state.revision,scene,direction:input('direction').value,reuseGrip};
   posting=true;lock();byId('error').textContent='';
   try{
     const reply=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});

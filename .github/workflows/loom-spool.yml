@@ -22,6 +22,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: '0'
       LOOM_REV: 9089b0283cc9077f51447e38b32f553049948d98
+      MATERIAL_READER_REV: 619b5e83fb69de380c06ec166eebfa4ebac1e096
       HOST_REV: 7c5fa1f2c70d36fbdd8b4054ca9384dfa9174f75
     steps:
       - uses: actions/checkout@v4
@@ -87,10 +88,17 @@ jobs:
         env:
           CAD_PAINT_FIXTURE: vise
         run: node --test examples/cad-paint/dist/managed.test.js
+      - uses: actions/checkout@v4
+        with:
+          repository: lazyalexander/an-loom
+          ref: ${{ env.MATERIAL_READER_REV }}
+          path: integrations/material-evidence
+          persist-credentials: false
       - name: Browser save (handwheel)
         timeout-minutes: 3
         env:
           CAD_PAINT_FIXTURE: handwheel
+          CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
       - name: Browser save (incomplete)
         timeout-minutes: 3

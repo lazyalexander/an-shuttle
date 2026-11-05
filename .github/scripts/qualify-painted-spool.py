@@ -27,7 +27,7 @@ def refused(*args):
     assert result.returncode != 0, "Expected host refusal"
 
 
-def check_outputs(attempt, parts):
+def check_outputs(attempt, parts, revision=1):
     instance = attempt / "instance"
     request = json.loads((attempt / "request.json").read_text())
     saved = json.loads((attempt / "saved.json").read_text())
@@ -39,7 +39,7 @@ def check_outputs(attempt, parts):
         assert item["binding"]["content_sha256"] == digest(attempt / item["path"])
     with ZipFile(attempt / "painting.ora") as document:
         scene = json.loads(document.read("data/scene.json"))
-        assert scene["source"] == request["source"] and scene["source"]["revision"] == 1
+        assert scene["source"] == request["source"] and scene["source"]["revision"] == revision
         assert scene["request_sha256"] == digest(attempt / "request.json")
         assert scene["kit_sha256"] == digest(instance / "kit/appearance.py")
         assert scene["generated"] == (["grip"] if scene["drawing"] == "handwheel" else [])
@@ -77,8 +77,27 @@ def verify(work):
     project = work / "project"
     for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
                         ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
-        attempt, = (work / name).glob("drawing-*")
+        attempts = {json.loads((candidate / "saved.json").read_text())["source"]["revision"]: candidate
+                    for candidate in (work / name).glob("drawing-*")}
+        attempt = attempts[1]
         check_outputs(attempt, parts)
+        if 2 in attempts:
+            current = attempts[2]
+            check_outputs(current, parts, 2)
+            previous = json.loads((attempt / "accepted.json").read_text())
+            reference = next(item["binding"] for item in previous["outputs"] if item["path"] == "painting.ora")
+            request = json.loads((current / "request.json").read_text())
+            assert request["agent"]["model"] is None
+            with ZipFile(attempt / "painting.ora") as before, ZipFile(current / "painting.ora") as after:
+                original = json.loads(before.read("data/scene.json"))
+                reused = json.loads(after.read("data/scene.json"))
+            evidence = request["material_evidence"]
+            assert evidence["source"] == original["source"]
+            assert evidence["request_sha256"] == original["request_sha256"]
+            assert evidence["artifact"]["revision"] == reference["revision"]
+            assert evidence["artifact"]["content_sha256"] == reference["content_sha256"]
+            assert evidence["material"] == original["materials"]["grip"] == reused["materials"]["grip"]
+            print(json.dumps({"grip_reused_from": reference["revision"], "model_calls_for_reuse": 0}), flush=True)
         if name == "handwheel":
             task = work / "task"
             call("an-loom", "task", project, task)
