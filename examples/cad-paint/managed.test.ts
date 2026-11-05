@@ -27,12 +27,12 @@ test('a browser save delivers only the native host’s accepted products', {time
   const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
   let lookups=0, proofs=0;
-  let holdAdoption=false;
-  let releaseAdoption=()=>{};
-  let adoptionRequested=()=>{};
+  let holdRequest=false;
+  let releaseRequest=()=>{};
+  let lookupRequested=()=>{};
   let proxyFinished=(matched:boolean)=>{void matched;};
-  const delayed=new Promise<void>(resolve=>{releaseAdoption=resolve;});
-  const requested=new Promise<void>(resolve=>{adoptionRequested=resolve;});
+  const delayed=new Promise<void>(resolve=>{releaseRequest=resolve;});
+  const requested=new Promise<void>(resolve=>{lookupRequested=resolve;});
   const sent=new Promise<boolean>(resolve=>{proxyFinished=resolve;});
   const exchanges: {request: {prompt:string;model:string;format:{required:string[]}};response:string}[] = [];
   const model = createServer(async (request, response) => {
@@ -53,8 +53,8 @@ test('a browser save delivers only the native host’s accepted products', {time
         if (action) lookups++; else proofs++;
         const answer=action ? {action:'read_approved_material',...data.permitted}
           : {adopt:true,evidence_id:data.evidence_id};
-        const holding=!action && holdAdoption;
-        if (holding) adoptionRequested();
+        const holding=action && holdRequest;
+        if (holding) lookupRequested();
         const result=liveModel
           ? await fetch(new URL(request.url,upstream),{method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({...input,reasoning_effort:'none',temperature:0,response_format:{type:'json_object'}}),
@@ -68,7 +68,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         }
         if (holding) {
           const reply=JSON.parse(JSON.parse(result).choices[0].message.content);
-          assert.deepEqual(reply,answer,'The delayed real model reply must be a valid adoption');
+          assert.deepEqual(reply,answer,'The delayed real model reply must be a valid lookup proposal');
           await delayed;
           response.end(result);
           proxyFinished(true);
@@ -98,7 +98,7 @@ test('a browser save delivers only the native host’s accepted products', {time
       exchanges.push({request:input,response:result});
       response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
     } catch(error) {
-      if (holdAdoption) proxyFinished(false);
+      if (holdRequest) proxyFinished(false);
       response.writeHead(502);response.end(String(error));
     }
   });
@@ -274,20 +274,22 @@ test('a browser save delivers only the native host’s accepted products', {time
             current=after;
           }
           if (liveHistory) {
-            holdAdoption=true;
+            holdRequest=true;
+            const priorProofs=proofs;
             const priorFolders=new Set(await readdir(output));
             const priorOpens=opened.length;
             await first.locator('#verifyHistory').check();
             const cancelledSave=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:630_000});
             void cancelledSave.catch(()=>{});
             await first.locator('#save').click();
-            await Promise.race([requested,delay(310_000,undefined,{ref:false}).then(()=>{throw Error('The host did not request adoption');})]);
+            await Promise.race([requested,delay(310_000,undefined,{ref:false}).then(()=>{throw Error('The host did not request a lookup decision');})]);
             const cancellation=first.waitForResponse(r=>r.url()===origin+'/cancel-material');
             await first.locator('#cancelMaterial').click();
             assert.equal((await cancellation).status(),202);
-            releaseAdoption();
+            releaseRequest();
             assert.equal((await cancelledSave).status(),500);
             assert.equal(await sent,true,'The real Ollama reply must arrive after cancellation');
+            assert.equal(proofs,priorProofs,'The cancelled proposal must not reach evidence adoption');
             const settled=await readState();
             assert.equal(settled.artifact,null);
             assert.equal(settled.locked,false);
@@ -295,9 +297,9 @@ test('a browser save delivers only the native host’s accepted products', {time
             const created=(await readdir(output)).filter(entry=>!priorFolders.has(entry));
             assert.equal(created.length,1);
             const files=await readdir(join(output,created[0]));
-            for (const product of ['painting.ora','beauty.png','accepted.json','instance'])
+            for (const product of ['painting.ora','beauty.png','accepted.json','instance','adopt-agent'])
               assert.ok(!files.includes(product),product+' was created after cancelling lookup');
-            console.log('Live Ollama adoption arrived after cancellation; no render started');
+            console.log('Live Ollama lookup proposal arrived after cancellation; no adoption or render started');
           }
           await writeFile(join(root,drawing.id+'-lock-timings.json'),JSON.stringify(locks));
         }
@@ -320,7 +322,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         }
         throw error;
       } finally {
-        releaseAdoption();
+        releaseRequest();
         await context.close();
         server.closeAllConnections();
         await new Promise<void>(done => server.close(() => done()));
