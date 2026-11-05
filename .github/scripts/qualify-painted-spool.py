@@ -42,7 +42,10 @@ def check_outputs(attempt, parts, revision=1):
         assert scene["source"] == request["source"] and scene["source"]["revision"] == revision
         assert scene["request_sha256"] == digest(attempt / "request.json")
         assert scene["kit_sha256"] == digest(instance / "kit/appearance.py")
-        assert set(scene["generated"]) == set(parts) - request["scene"]["materials"].keys()
+        expected_generated = set(parts) - request["scene"]["materials"].keys()
+        assert set(scene["generated"]) == expected_generated
+        if not expected_generated:
+            assert not (attempt / "appearance.py").exists()
         png_bytes = (attempt / "beauty.png").read_bytes()
         assert document.read("mergedimage.png") == png_bytes
         png = Image.open(BytesIO(png_bytes)).convert("RGBA")
@@ -73,7 +76,7 @@ def prepare(archive, work):
                     project / "native-spool.toml", runtime], check=True)
 
 
-def verify(work):
+def verify(work, direct=False):
     project = work / "project"
     for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
                         ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
@@ -81,6 +84,12 @@ def verify(work):
                     for candidate in (work / name).glob("drawing-*")}
         attempt = attempts[1]
         check_outputs(attempt, parts)
+        if direct:
+            assert set(attempts) == {1}
+            request = json.loads((attempt / "request.json").read_text())
+            assert request["agent"]["model"] is None
+            assert set(request["scene"]["materials"]) == set(parts)
+            continue
         if 2 in attempts:
             check_outputs(attempts[2], parts, 2)
         for revision in (3, 4):
@@ -115,6 +124,8 @@ def verify(work):
             for target in ["render.py", "../silk/render.py"]:
                 refused("an-agent-host", "spool-kit-update", attempt / "instance", target, candidate)
             assert digest(protected) == before
+    if direct:
+        return
     timings = [work / (name + "-lock-timings.json") for name in ("vise", "handwheel")]
     if any(path.exists() for path in timings):
         samples = sorted(value for path in timings for value in json.loads(path.read_text()))
@@ -169,10 +180,11 @@ if __name__ == "__main__":
     parser.add_argument("archive_or_stage")
     parser.add_argument("work", type=Path)
     parser.add_argument("--krita", type=Path, help="Also import accepted ORAs into native KRA files and compare layers/pixels")
+    parser.add_argument("--direct", action="store_true", help="Verify the two zero-model CAD saves only")
     args = parser.parse_args()
     work = args.work.resolve(strict=True)
     if args.archive_or_stage == "verify":
-        verify(work)
+        verify(work, args.direct)
         if args.krita:
             verify_krita(work, args.krita.resolve(strict=True))
     else:
