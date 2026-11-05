@@ -19,6 +19,8 @@ test('a browser save delivers only the native host’s accepted products', {time
   const fixture=process.env.CAD_PAINT_FIXTURE;
   assert.ok(['vise','handwheel','incomplete','cancelled'].includes(fixture!));
   const liveModel=process.env.CAD_PAINT_REAL_MODEL==='1';
+  const hostAgent=process.env.CAD_MATERIAL_HOST_AGENT==='1';
+  if (hostAgent) assert.ok(process.env.CAD_MATERIAL_READER,'Host material acceptance requires the delegated reader');
   const upstream=process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
   const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
@@ -29,6 +31,27 @@ test('a browser save delivers only the native host’s accepted products', {time
       let message = '';
       for await (const chunk of request) message += chunk;
       const input=JSON.parse(message);
+      if (request.url==='/v1/chat/completions') {
+        assert.equal(hostAgent,true);
+        const prefix='[external-context-untrusted] ';
+        const line=input.messages.find((entry:{role:string})=>entry.role==='user')?.content
+          .split('\n').find((entry:string)=>entry.startsWith(prefix));
+        assert.ok(line,'Host must supply one tagged context packet');
+        const packet=JSON.parse(line.slice(prefix.length));
+        const data=JSON.parse(packet.text);
+        const action=packet.source==='cad:material:request';
+        assert.equal(packet.source,action ? 'cad:material:request' : 'cad:material:adopt');
+        if (action) lookups++; else proofs++;
+        const answer=action ? {action:'read_approved_material',...data.permitted}
+          : {adopt:true,evidence_id:data.evidence_id};
+        const result=liveModel
+          ? await fetch(new URL(request.url,upstream),{method:'POST',headers:{'Content-Type':'application/json'},
+            body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
+          : JSON.stringify({choices:[{message:{content:JSON.stringify(answer)}}],
+            usage:{prompt_tokens:10,completion_tokens:5}});
+        response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
+        return;
+      }
       if (request.url==='/api/chat') {
         const action=input.tools.length===1;
         if (action) lookups++; else proofs++;
@@ -37,7 +60,7 @@ test('a browser save delivers only the native host’s accepted products', {time
             body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
           : JSON.stringify({message:action
             ? {role:'assistant',content:'',tool_calls:[{function:{name:'read_approved_material',arguments:JSON.parse(input.messages[1].content)}}]}
-            : {role:'assistant',content:input.messages.at(-1).content}});
+            : {role:'assistant',content:JSON.stringify({adopt:true,evidence_id:JSON.parse(input.messages.at(-1).content).evidence_id})}});
         response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
         return;
       }
@@ -114,7 +137,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         console.log('Save clicked',fixture);
         for (const page of [first,second]) {
           await page.getByText('CAD 已锁定 · 正在绘制',{exact:true}).waitFor();
-          assert.equal(await page.locator('input:enabled,select:enabled,button:enabled').count(),0);
+          assert.equal(await page.locator('input:enabled,select:enabled,button:enabled:not(#cancelMaterial)').count(),0);
         }
         console.log('Both tabs locked',fixture);
         const duplicate = await fetch(origin+'/save',{method:'POST',headers:{origin,'content-type':'application/json'},
@@ -195,7 +218,7 @@ test('a browser save delivers only the native host’s accepted products', {time
             void reply.catch(()=>{});
             await first.locator('#save').click();
             await second.getByText('CAD 已锁定 · 正在绘制',{exact:true}).waitFor();
-            assert.equal(await second.locator('input:enabled,select:enabled,button:enabled').count(),0);
+            assert.equal(await second.locator('input:enabled,select:enabled,button:enabled:not(#cancelMaterial)').count(),0);
             const completed=await reply;
             assert.equal(completed.response.status(),200);
             await second.locator('#controls:enabled').waitFor();
@@ -209,6 +232,13 @@ test('a browser save delivers only the native host’s accepted products', {time
             assert.equal(materials.length-generated,mode==='complement' && drawing===benchVise ? 1 : 0);
             assert.equal(lookups,mode==='history' ? 1 : 0);
             assert.equal(proofs,lookups);
+            if (hostAgent && mode==='history') {
+              const folder=join(output,after.artifact.split('/').at(-1));
+              for (const stage of ['request','adopt']) {
+                const receipt=JSON.parse(await readFile(join(folder,stage+'-agent','receipt.json'),'utf8'));
+                assert.equal(receipt.status,'succeeded');
+              }
+            }
             const expired=await post(origin,current);
             assert.equal(expired.status,409);
             await expired.text();

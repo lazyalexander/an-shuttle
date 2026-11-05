@@ -131,7 +131,34 @@ or the vise moving jaw from the last accepted revision.
 
 Selecting the displayed revision reads the accepted ORA directly. Selecting
 historical verification asks local Ollama to request that one approved record
-and return matching evidence. The adapter checks the document, part and
-revision before reading, and validates the model's proof before rendering.
+and return an adoption decision with its evidence ID. The adapter checks the
+document, part and revision before reading. It keeps the original record
+for this lookup and uses it for rendering only if the returned ID matches.
 A rejected or unavailable proof fails the save. Both paths record the source
 revision and exact artifact binding in the new request.
+
+Set `CAD_MATERIAL_HOST_AGENT=1` to route the historical decision through
+`an-agent-host model` with a loopback Ollama endpoint. Use the matching reviewed
+Loom reader checkout with `delegation.json` alongside the reader. Opting in
+permits only the displayed drawing's approved part and the selected accepted
+revision. The host records each model decision under the current save folder.
+The model-facing packet excludes the ORA bytes and filesystem paths.
+
+The studio exposes cancellation while a historical lookup is pending. A
+cancelled lookup never enters rendering, even if its model response arrives
+after cancellation. Native render cancellation is controlled by the supervisor.
+
+With the managed host, runtime and reader already configured, the browser
+acceptance can exercise the host-model route with a deterministic local API
+fixture or with the local model. Use a fresh `CAD_PAINT_TEST_OUTPUT` directory
+for each run:
+
+```sh
+npm run build
+CAD_PAINT_FIXTURE=handwheel CAD_MATERIAL_HOST_AGENT=1 \
+  node --test examples/cad-paint/dist/managed.test.js
+```
+
+Set `CAD_PAINT_REAL_MODEL=1` to forward the requests to the configured local
+Ollama endpoint. The test checks both host model receipts and the accepted
+PNG/ORA artifacts.

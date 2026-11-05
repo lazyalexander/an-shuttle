@@ -97,3 +97,65 @@ test('OpenSCAD handwheel uses the same editor, locks and file delivery', {timeou
     assert.deepEqual(cutFiles,opened);
   }finally{await browser.close();}
 });
+
+test('cancel a pending material lookup from the handwheel editor', {timeout:60_000},async t=>{
+  const drawing=await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
+  const output=await mkdtemp(join(tmpdir(),'shuttle-browser-cancel-'));
+  const variables=['CAD_MATERIAL_READER','CAD_MATERIAL_HOST_AGENT'];
+  const original=variables.map(key=>process.env[key]);
+  process.env.CAD_MATERIAL_READER='fixture-reader';
+  process.env.CAD_MATERIAL_HOST_AGENT='1';
+  let reached=()=>{};
+  const entered=new Promise<void>(resolve=>{reached=resolve;});
+  let release=()=>{};
+  const released=new Promise<void>(resolve=>{release=resolve;});
+  let renders=0;
+  const server=studio(0,{drawing,output,open:async()=>{},
+    render:async(_scene,_revision,folder)=>{renders++;return join(folder,'painting.ora');},
+    readMaterial:async(_reader,_folder,document,epoch,revision,part)=>({
+      schema:'cad-material-evidence-v1',part,source:{document,epoch,revision},
+      artifact:{release:'a'.repeat(64),revision:'b'.repeat(64)},
+      material:{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8},
+    }),
+    askAgent:async(_folder,stage,data)=>{
+      if (stage==='request') return {action:'read_approved_material',...(data as {permitted:object}).permitted};
+      reached();
+      await released;
+      return {adopt:true,evidence_id:(data as {evidence_id:string}).evidence_id};
+    },
+  });
+  t.after(async()=>{
+    release();
+    for(const [i,key] of variables.entries()) {
+      if(original[i]===undefined) delete process.env[key]; else process.env[key]=original[i];
+    }
+    server.closeAllConnections();
+    await new Promise<void>(resolve=>server.close(()=>resolve()));
+    await rm(output,{recursive:true,force:true});
+  });
+  await once(server,'listening');
+  const addr=server.address();assert.ok(addr&&typeof addr!=='string');
+  const url='http://127.0.0.1:'+addr.port;
+  const browser=await chromium.launch({channel:'chrome'});
+  try {
+    const page=await browser.newPage();
+    await page.goto(url);
+    await page.locator('#save').click();
+    await page.locator('#verifyHistory').check();
+    const saved=page.waitForResponse(response=>response.url()===url+'/save');
+    void saved.catch(()=>{});
+    await page.locator('#save').click();
+    await entered;
+    await page.locator('#controls:disabled').waitFor();
+    const cancelled=page.waitForResponse(response=>response.url()===url+'/cancel-material');
+    await page.locator('#cancelMaterial').click();
+    assert.equal((await cancelled).status(),202);
+    await page.locator('#cancelMaterial').waitFor({state:'hidden'});
+    await page.locator('#controls:disabled').waitFor();
+    release();
+    assert.equal((await saved).status(),500);
+    await page.locator('#controls:enabled').waitFor();
+    assert.equal(await page.locator('#download').isVisible(),false);
+    assert.equal(renders,1);
+  } finally {release();await browser.close();}
+});
