@@ -23,6 +23,7 @@ test('a browser save delivers only the native host’s accepted products', {time
   if (hostAgent) assert.ok(process.env.CAD_MATERIAL_READER,'Host material acceptance requires the delegated reader');
   const liveHistory=hostAgent && liveModel && fixture==='handwheel';
   const cancelOnly=liveHistory && process.env.CAD_PAINT_CANCEL_ONLY==='1';
+  const direct=process.env.CAD_PAINT_DIRECT==='1';
   const upstream=process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
   const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
@@ -134,7 +135,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         const [first,second] = await Promise.all([context.newPage(),context.newPage()]);
         await Promise.all([first.goto(origin),second.goto(origin)]);
         for (const page of [first,second]) await page.locator('#controls:enabled').waitFor();
-        if (drawing.id!=='handwheel') {
+        if (drawing.id!=='handwheel' || direct) {
           for (const part of Object.keys(drawing.parts)) await first.locator('#'+part).selectOption('0');
         }
         if (liveHistory) await first.locator('#grip').selectOption('0');
@@ -148,13 +149,24 @@ test('a browser save delivers only the native host’s accepted products', {time
           const controls=document.querySelector<HTMLFieldSetElement>('#controls')!;
           document.querySelector('#save')!.addEventListener('click',() => {
             performance.mark('paint-click');
+            let observedLock=false;
             const observer=new MutationObserver(() => {
-              if (controls.disabled) { performance.mark('paint-locked'); observer.disconnect(); }
+              if (controls.disabled && !observedLock) {performance.mark('paint-locked');observedLock=true;}
+              else if (!controls.disabled && observedLock) {performance.mark('paint-unlocked');observer.disconnect();}
             });
             observer.observe(controls,{attributes:true,attributeFilter:['disabled']});
           },{capture:true,once:true});
         });
         await markSave();
+        if (direct) {
+          await second.evaluate(() => {
+            const controls=document.querySelector<HTMLFieldSetElement>('#controls')!;
+            const observer=new MutationObserver(() => {
+              if (controls.disabled) {performance.mark('other-locked');observer.disconnect();}
+            });
+            observer.observe(controls,{attributes:true,attributeFilter:['disabled']});
+          });
+        }
         console.log('Submitting',fixture);
         let started=0;
         const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:630_000})
@@ -198,12 +210,26 @@ test('a browser save delivers only the native host’s accepted products', {time
         assert.equal(response.status(),drawing===broken || drawing===cancelled ? 500 : 200);
         const uiLockMs=await first.evaluate(() => performance.measure('paint lock','paint-click','paint-locked').duration);
         const locks=[uiLockMs];
-        console.log(JSON.stringify({drawing:drawing.id,clickToLockMs:uiLockMs,
-          saveResponseMs,modelRequests:materials.length-clicks,http:response.status()}));
+        const measurements={drawing:drawing.id,clickToLockMs:uiLockMs,saveResponseMs,
+          modelRequests:materials.length-clicks,http:response.status()};
+        if (direct) {
+          await first.locator('#controls:enabled').waitFor();
+          const clickToDeliveryMs=await first.evaluate(() =>
+            performance.measure('paint delivery','paint-click','paint-unlocked').duration);
+          const clickEpochMs=await first.evaluate(() =>
+            performance.timeOrigin+performance.getEntriesByName('paint-click','mark')[0].startTime);
+          const otherWindowLockMs=await second.evaluate(() =>
+            performance.timeOrigin+performance.getEntriesByName('other-locked','mark')[0].startTime)-clickEpochMs;
+          const directMeasurements={...measurements,otherWindowLockMs,clickToDeliveryMs};
+          console.log(JSON.stringify(directMeasurements));
+          await writeFile(join(root,drawing.id+'-direct-timing.local.json'),JSON.stringify(directMeasurements));
+        } else {
+          console.log(JSON.stringify(measurements));
+        }
         await second.locator('#controls:enabled').waitFor();
         const state = await (await fetch(origin+'/state',{signal:AbortSignal.timeout(10_000)})).json();
         assert.equal(state.locked,false); assert.equal(state.revision,1); assert.equal(state.epoch,before.epoch);
-        assert.equal(materials.length-clicks,drawing.id==='handwheel' && !liveHistory ? 1 : 0);
+        assert.equal(materials.length-clicks,drawing.id==='handwheel' && !liveHistory && !direct ? 1 : 0);
         const [attempt] = await readdir(output);
         if (drawing===broken || drawing===cancelled) {
           assert.equal(state.artifact,null); assert.deepEqual(opened,[]);
@@ -219,14 +245,14 @@ test('a browser save delivers only the native host’s accepted products', {time
             assert.deepEqual(Buffer.from(await product.arrayBuffer()),await readFile(join(output,attempt,name)));
           }
         }
-        if (drawing===wheel && !liveHistory) {
+        if (drawing===wheel && !liveHistory && !direct) {
           const brief=JSON.parse(exchanges.at(-1)!.request.prompt.split('\n').slice(1).join('\n'));
           assert.equal(brief.description,drawing.description);assert.equal(brief.direction,direction);
           assert.deepEqual(brief.supplied,state.scene.materials);
           assert.deepEqual(brief.missing,{grip:{label:drawing.parts.grip.label}});
           assert.deepEqual(Object.keys(brief).sort(),['description','direction','missing','supplied']);
         }
-        if ((drawing===wheel || drawing===benchVise) && process.env.CAD_MATERIAL_READER) {
+        if (!direct && (drawing===wheel || drawing===benchVise) && process.env.CAD_MATERIAL_READER) {
           const part=drawing===wheel ? 'grip' : 'movingJaw';
           assert.deepEqual(state.materialReference,{part,revision:1});
           const readState=async()=> (await first.request.get(origin+'/state')).json();
@@ -329,7 +355,12 @@ test('a browser save delivers only the native host’s accepted products', {time
       }
     });
   }
-  assert.deepEqual(materials,fixture==='handwheel' && !liveHistory ? [['grip']] :
-    fixture==='vise' && process.env.CAD_MATERIAL_READER ? [['movingJaw']] : []);
+  if (direct) {
+    assert.deepEqual(materials,[]);
+    assert.equal(lookups+proofs,0);
+  } else {
+    assert.deepEqual(materials,fixture==='handwheel' && !liveHistory ? [['grip']] :
+      fixture==='vise' && process.env.CAD_MATERIAL_READER ? [['movingJaw']] : []);
+  }
   await writeFile(join(root,fixture+'-model-exchange.local.json'),JSON.stringify({liveModel,exchanges}));
 });
