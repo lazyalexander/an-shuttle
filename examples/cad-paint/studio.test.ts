@@ -113,3 +113,120 @@ test('a pending Krita launch cannot hold editing or replace a later revision’s
   assert.equal(launches,2);assert.equal(current.message,newer.message);
   assert.equal(current.artifact,newer.artifact);
 });
+
+test('material adoption resolves only the current host evidence and rejects late decisions', async t => {
+  const {verifyMaterial}=await import('./verify-material.js');
+  const scope={document:'handwheel',part:'grip',revision:7};
+  const evidence={
+    schema:'cad-material-evidence-v1' as const, part:scope.part,
+    source:{document:scope.document,epoch:'test-epoch',revision:scope.revision},
+    artifact:{release:'a'.repeat(64),revision:'b'.repeat(64)},
+    material:{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8},
+  };
+  const controller=new AbortController();
+  let mode='adopt', issuedId='', reads=0, decisions=0;
+  t.mock.method(globalThis,'fetch',async (_url:unknown, init:RequestInit)=>{
+    const request=JSON.parse(String(init.body));
+    if (request.tools.length) {
+      const args=mode==='outside-scope' ? {...scope,revision:8} : scope;
+      return Response.json({message:{role:'assistant',content:'',
+        tool_calls:[{function:{name:'read_approved_material',arguments:args}}]}});
+    }
+    decisions++;
+    const {evidence_id:id}=JSON.parse(request.messages.at(-1).content);
+    if (mode==='adopt') issuedId=id;
+    if (mode==='cancelled') controller.abort(new Error('Lookup cancelled'));
+    return Response.json({message:{content:JSON.stringify({adopt:true,evidence_id:issuedId})}});
+  });
+  const verify=(signal?:AbortSignal)=>verifyMaterial(scope.document,scope.part,scope.revision,
+    async()=>{reads++;return evidence;},signal);
+
+  assert.equal(await verify(),evidence);
+  mode='previous-id';
+  await assert.rejects(verify(),/did not adopt/);
+  mode='outside-scope';
+  await assert.rejects(verify(),/exceeded the approved scope/);
+  assert.equal(reads,2);
+  assert.equal(decisions,2);
+  mode='wrong-source';
+  await assert.rejects(verifyMaterial(scope.document,scope.part,scope.revision,
+    async()=>({...evidence,source:{...evidence.source,revision:8}})),/does not match the approved scope/);
+  assert.equal(decisions,2);
+  mode='cancelled';
+  await assert.rejects(verify(controller.signal),/Lookup cancelled/);
+});
+
+test('save scopes the host material decision and blocks rendering after lookup cancellation', async t => {
+  const output=await mkdtemp(join(tmpdir(),'shuttle-cancel-lookup-'));
+  const env=['CAD_MATERIAL_READER','CAD_MATERIAL_HOST_AGENT'] as const;
+  const before=env.map(key=>process.env[key]);
+  process.env.CAD_MATERIAL_READER='fixture-reader';
+  process.env.CAD_MATERIAL_HOST_AGENT='1';
+  let mode='adopt', rendered=0, reads=0;
+  let releaseDecision=()=>{};
+  let reachedDecision=()=>{};
+  const entered=new Promise<void>(resolve=>{reachedDecision=resolve;});
+  const delayed=new Promise<void>(resolve=>{releaseDecision=resolve;});
+  const evidenceFor=(document:string,epoch:string,revision:number,part:string)=>({
+    schema:'cad-material-evidence-v1' as const,part,source:{document,epoch,revision},
+    artifact:{release:'a'.repeat(64),revision:'b'.repeat(64)},
+    material:{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8},
+  });
+  const {loadDrawing}=await import('./server.js');
+  const {fileURLToPath}=await import('node:url');
+  const drawing=await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
+  const server=studio(0,{output,drawing,open:async()=>{},
+    render:async(_scene,_revision,folder,_drawing,_epoch,_direction,_waiting,evidence)=>{
+      rendered++;
+      if (rendered===2) assert.equal(evidence?.material.finish,'walnut');
+      return join(folder,'painting.ora');
+    },
+    readMaterial:async(_reader,_folder,document,epoch,revision,part,delegated)=>{
+      assert.equal(delegated,true);reads++;
+      return evidenceFor(document,epoch,revision,part);
+    },
+    askAgent:async(_folder,stage,data)=>{
+      if (stage==='request') {
+        const {permitted}=data as {permitted:{revision:number}};
+        return {action:'read_approved_material',...permitted,
+          revision:permitted.revision+(mode==='wrong-scope' ? 1 : 0)};
+      }
+      if (mode==='cancel') {reachedDecision();await delayed;}
+      return {adopt:true,evidence_id:(data as {evidence_id:string}).evidence_id};
+    },
+  });
+  t.after(async()=>{
+    releaseDecision();
+    for (const [i,key] of env.entries()) {
+      if (before[i]===undefined) delete process.env[key]; else process.env[key]=before[i];
+    }
+    server.closeAllConnections();
+    await new Promise<void>(resolve=>server.close(()=>resolve()));
+    await rm(output,{recursive:true,force:true});
+  });
+  await once(server,'listening');
+  const addr=server.address();assert.ok(addr && typeof addr!=='string');
+  const url='http://127.0.0.1:'+addr.port;
+  const state=async()=> (await fetch(url+'/state')).json();
+  const post=(path:string,data:unknown)=>fetch(url+path,{method:'POST',
+    headers:{origin:url,'content-type':'application/json'},body:JSON.stringify(data)});
+  const save=async()=>post('/save',{...await state(),materialHistory:'last-accepted'});
+  assert.equal((await post('/save',await state())).status,200);
+  assert.equal((await save()).status,200);
+  mode='wrong-scope';
+  assert.equal((await save()).status,500);
+  assert.equal(reads,1);
+  mode='cancel';
+  const pending=save();
+  await entered;
+  const active=await state();
+  assert.equal(active.canCancelLookup,true);
+  assert.equal((await post('/cancel-material',{...active,revision:active.revision-1})).status,409);
+  assert.equal((await post('/cancel-material',active)).status,202);
+  releaseDecision();
+  assert.equal((await pending).status,500);
+  assert.equal(rendered,2);
+  const final=await state();
+  assert.equal(final.locked,false);
+  assert.equal(final.artifact,null);
+});

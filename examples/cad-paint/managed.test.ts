@@ -13,23 +13,71 @@ import {benchVise, type Model} from '@an-shuttle/cad/drawing.js';
 import {openInKrita} from '@an-shuttle/krita/document.js';
 import {loadDrawing,studio} from './server.js';
 
-test('a browser save delivers only the native host’s accepted products', {timeout:600_000}, async t => {
+test('a browser save delivers only the native host’s accepted products', {timeout:1_350_000}, async t => {
   const root = await realpath(process.env.CAD_PAINT_TEST_OUTPUT!);
   const wheel = await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
   const fixture=process.env.CAD_PAINT_FIXTURE;
   assert.ok(['vise','handwheel','incomplete','cancelled'].includes(fixture!));
   const liveModel=process.env.CAD_PAINT_REAL_MODEL==='1';
+  const hostAgent=process.env.CAD_MATERIAL_HOST_AGENT==='1';
+  if (hostAgent) assert.ok(process.env.CAD_MATERIAL_READER,'Host material acceptance requires the delegated reader');
+  const liveHistory=hostAgent && liveModel && fixture==='handwheel';
+  const cancelOnly=liveHistory && process.env.CAD_PAINT_CANCEL_ONLY==='1';
   const direct=process.env.CAD_PAINT_DIRECT==='1';
   const upstream=process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
   const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
   let lookups=0, proofs=0;
+  let holdRequest=false;
+  let releaseRequest=()=>{};
+  let lookupRequested=()=>{};
+  let proxyFinished=(matched:boolean)=>{void matched;};
+  const delayed=new Promise<void>(resolve=>{releaseRequest=resolve;});
+  const requested=new Promise<void>(resolve=>{lookupRequested=resolve;});
+  const sent=new Promise<boolean>(resolve=>{proxyFinished=resolve;});
   const exchanges: {request: {prompt:string;model:string;format:{required:string[]}};response:string}[] = [];
   const model = createServer(async (request, response) => {
     try {
       let message = '';
       for await (const chunk of request) message += chunk;
       const input=JSON.parse(message);
+      if (request.url==='/v1/chat/completions') {
+        assert.equal(hostAgent,true);
+        const prefix='[external-context-untrusted] ';
+        const line=input.messages.find((entry:{role:string})=>entry.role==='user')?.content
+          .split('\n').find((entry:string)=>entry.startsWith(prefix));
+        assert.ok(line,'Host must supply one tagged context packet');
+        const packet=JSON.parse(line.slice(prefix.length));
+        const data=JSON.parse(packet.text);
+        const action=packet.source==='cad:material:request';
+        assert.equal(packet.source,action ? 'cad:material:request' : 'cad:material:adopt');
+        if (action) lookups++; else proofs++;
+        const answer=action ? {action:'read_approved_material',...data.permitted}
+          : {adopt:true,evidence_id:data.evidence_id};
+        const holding=action && holdRequest;
+        if (holding) lookupRequested();
+        const result=liveModel
+          ? await fetch(new URL(request.url,upstream),{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({...input,reasoning_effort:'none',temperature:0,response_format:{type:'json_object'}}),
+            signal:AbortSignal.timeout(holding ? 600_000 : 300_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
+          : JSON.stringify({choices:[{message:{content:JSON.stringify(answer)}}],
+            usage:{prompt_tokens:10,completion_tokens:5}});
+        if (liveModel) {
+          const modelReply=JSON.parse(result);
+          console.log(JSON.stringify({stage:packet.source,finishReason:modelReply.choices[0].finish_reason,
+            usage:modelReply.usage}));
+        }
+        if (holding) {
+          const reply=JSON.parse(JSON.parse(result).choices[0].message.content);
+          assert.deepEqual(reply,answer,'The delayed real model reply must be a valid lookup proposal');
+          await delayed;
+          response.end(result);
+          proxyFinished(true);
+          return;
+        }
+        response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
+        return;
+      }
       if (request.url==='/api/chat') {
         const action=input.tools.length===1;
         if (action) lookups++; else proofs++;
@@ -38,7 +86,7 @@ test('a browser save delivers only the native host’s accepted products', {time
             body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
           : JSON.stringify({message:action
             ? {role:'assistant',content:'',tool_calls:[{function:{name:'read_approved_material',arguments:JSON.parse(input.messages[1].content)}}]}
-            : {role:'assistant',content:input.messages.at(-1).content}});
+            : {role:'assistant',content:JSON.stringify({adopt:true,evidence_id:JSON.parse(input.messages.at(-1).content).evidence_id})}});
         response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
         return;
       }
@@ -50,7 +98,10 @@ test('a browser save delivers only the native host’s accepted products', {time
           [part,{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}])) )});
       exchanges.push({request:input,response:result});
       response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
-    } catch(error) {response.writeHead(502);response.end(String(error));}
+    } catch(error) {
+      if (holdRequest) proxyFinished(false);
+      response.writeHead(502);response.end(String(error));
+    }
   });
   model.listen(0,'127.0.0.1');
   await once(model,'listening');
@@ -87,6 +138,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         if (drawing.id!=='handwheel' || direct) {
           for (const part of Object.keys(drawing.parts)) await first.locator('#'+part).selectOption('0');
         }
+        if (liveHistory) await first.locator('#grip').selectOption('0');
         const before = await (await first.request.get(origin+'/state')).json();
         const post=(originHeader:string,body:unknown)=>fetch(origin+'/save',{method:'POST',
           headers:{origin:originHeader,'content-type':'application/json'},body:JSON.stringify(body)});
@@ -117,7 +169,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         }
         console.log('Submitting',fixture);
         let started=0;
-        const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:130_000})
+        const pending = first.waitForResponse(response => response.url()===origin+'/save',{timeout:630_000})
           .then(response=>({response,saveResponseMs:performance.now()-started}));
         void pending.catch(() => {});
         await first.bringToFront();
@@ -126,7 +178,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         console.log('Save clicked',fixture);
         for (const page of [first,second]) {
           await page.getByText('CAD 已锁定 · 正在绘制',{exact:true}).waitFor();
-          assert.equal(await page.locator('input:enabled,select:enabled,button:enabled').count(),0);
+          assert.equal(await page.locator('input:enabled,select:enabled,button:enabled:not(#cancelMaterial)').count(),0);
         }
         console.log('Both tabs locked',fixture);
         const duplicate = await fetch(origin+'/save',{method:'POST',headers:{origin,'content-type':'application/json'},
@@ -177,7 +229,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         await second.locator('#controls:enabled').waitFor();
         const state = await (await fetch(origin+'/state',{signal:AbortSignal.timeout(10_000)})).json();
         assert.equal(state.locked,false); assert.equal(state.revision,1); assert.equal(state.epoch,before.epoch);
-        assert.equal(materials.length-clicks,drawing.id==='handwheel' && !direct ? 1 : 0);
+        assert.equal(materials.length-clicks,drawing.id==='handwheel' && !liveHistory && !direct ? 1 : 0);
         const [attempt] = await readdir(output);
         if (drawing===broken || drawing===cancelled) {
           assert.equal(state.artifact,null); assert.deepEqual(opened,[]);
@@ -193,7 +245,7 @@ test('a browser save delivers only the native host’s accepted products', {time
             assert.deepEqual(Buffer.from(await product.arrayBuffer()),await readFile(join(output,attempt,name)));
           }
         }
-        if (drawing===wheel && !direct) {
+        if (drawing===wheel && !liveHistory && !direct) {
           const brief=JSON.parse(exchanges.at(-1)!.request.prompt.split('\n').slice(1).join('\n'));
           assert.equal(brief.description,drawing.description);assert.equal(brief.direction,direction);
           assert.deepEqual(brief.supplied,state.scene.materials);
@@ -209,19 +261,19 @@ test('a browser save delivers only the native host’s accepted products', {time
           await stale.text();
 
           let current=state;
-          for (const mode of ['complement','exact','history']) {
+          for (const mode of cancelOnly ? [] : ['complement','exact','history']) {
             const generated=materials.length;
             if (mode==='complement') await first.locator('#'+part).selectOption(drawing===wheel ? '0' : '');
             if (mode==='exact') await first.locator('#reuseGrip').check();
             if (mode==='history') await first.locator('#verifyHistory').check();
             await markSave();
             const start=performance.now();
-            const reply=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:130_000})
+            const reply=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:630_000})
               .then(response=>({response,saveResponseMs:performance.now()-start}));
             void reply.catch(()=>{});
             await first.locator('#save').click();
             await second.getByText('CAD 已锁定 · 正在绘制',{exact:true}).waitFor();
-            assert.equal(await second.locator('input:enabled,select:enabled,button:enabled').count(),0);
+            assert.equal(await second.locator('input:enabled,select:enabled,button:enabled:not(#cancelMaterial)').count(),0);
             const completed=await reply;
             assert.equal(completed.response.status(),200);
             await second.locator('#controls:enabled').waitFor();
@@ -235,10 +287,45 @@ test('a browser save delivers only the native host’s accepted products', {time
             assert.equal(materials.length-generated,mode==='complement' && drawing===benchVise ? 1 : 0);
             assert.equal(lookups,mode==='history' ? 1 : 0);
             assert.equal(proofs,lookups);
+            if (hostAgent && mode==='history') {
+              const folder=join(output,after.artifact.split('/').at(-1));
+              for (const stage of ['request','adopt']) {
+                const receipt=JSON.parse(await readFile(join(folder,stage+'-agent','receipt.json'),'utf8'));
+                assert.equal(receipt.status,'succeeded');
+              }
+            }
             const expired=await post(origin,current);
             assert.equal(expired.status,409);
             await expired.text();
             current=after;
+          }
+          if (liveHistory) {
+            holdRequest=true;
+            const priorProofs=proofs;
+            const priorFolders=new Set(await readdir(output));
+            const priorOpens=opened.length;
+            await first.locator('#verifyHistory').check();
+            const cancelledSave=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:630_000});
+            void cancelledSave.catch(()=>{});
+            await first.locator('#save').click();
+            await Promise.race([requested,delay(310_000,undefined,{ref:false}).then(()=>{throw Error('The host did not request a lookup decision');})]);
+            const cancellation=first.waitForResponse(r=>r.url()===origin+'/cancel-material');
+            await first.locator('#cancelMaterial').click();
+            assert.equal((await cancellation).status(),202);
+            releaseRequest();
+            assert.equal((await cancelledSave).status(),500);
+            assert.equal(await sent,true,'The real Ollama reply must arrive after cancellation');
+            assert.equal(proofs,priorProofs,'The cancelled proposal must not reach evidence adoption');
+            const settled=await readState();
+            assert.equal(settled.artifact,null);
+            assert.equal(settled.locked,false);
+            assert.equal(opened.length,priorOpens);
+            const created=(await readdir(output)).filter(entry=>!priorFolders.has(entry));
+            assert.equal(created.length,1);
+            const files=await readdir(join(output,created[0]));
+            for (const product of ['painting.ora','beauty.png','accepted.json','instance','adopt-agent'])
+              assert.ok(!files.includes(product),product+' was created after cancelling lookup');
+            console.log('Live Ollama lookup proposal arrived after cancellation; no adoption or render started');
           }
           await writeFile(join(root,drawing.id+'-lock-timings.json'),JSON.stringify(locks));
         }
@@ -246,6 +333,13 @@ test('a browser save delivers only the native host’s accepted products', {time
         const route = await fetch(origin+'/state').then(r => r.json()).catch(() => null);
         console.error('CAD failure evidence',drawing.id,route?.revision,route?.locked,route?.message);
         for (const attempt of await readdir(output).catch(() => [])) {
+          for (const stage of ['request','adopt']) {
+            const raw=await readFile(join(output,attempt,stage+'-agent','receipt.json'),'utf8').catch(()=>null);
+            if (raw) {
+              const receipt=JSON.parse(raw);
+              console.error('material receipt',stage,receipt.status,receipt.model_attempt);
+            }
+          }
           const result = await readFile(join(output,attempt,'instance/runs/paint/result.json'),'utf8').catch(() => null);
           if (result) {
             const record=JSON.parse(result);
@@ -254,6 +348,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         }
         throw error;
       } finally {
+        releaseRequest();
         await context.close();
         server.closeAllConnections();
         await new Promise<void>(done => server.close(() => done()));
@@ -264,7 +359,7 @@ test('a browser save delivers only the native host’s accepted products', {time
     assert.deepEqual(materials,[]);
     assert.equal(lookups+proofs,0);
   } else {
-    assert.deepEqual(materials,fixture==='handwheel' ? [['grip']] :
+    assert.deepEqual(materials,fixture==='handwheel' && !liveHistory ? [['grip']] :
       fixture==='vise' && process.env.CAD_MATERIAL_READER ? [['movingJaw']] : []);
   }
   await writeFile(join(root,fixture+'-model-exchange.local.json'),JSON.stringify({liveModel,exchanges}));

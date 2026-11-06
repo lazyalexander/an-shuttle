@@ -66,12 +66,15 @@ function preview() {
   }
   byId('gapValue').textContent=parameterOf(s)+parameter.unit;
 }
-interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string;materialReference:{part:string;revision:number}|null}
+interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;artifact:string|null;message:string;canCut:boolean;canCancelLookup:boolean;cutStatus:string;materialReference:{part:string;revision:number}|null}
 let state:State|null=null, posting=false, connected=false;
 const cut = document.querySelector<HTMLButtonElement>('#cut')!;
+const cancelMaterial = document.querySelector<HTMLButtonElement>('#cancelMaterial')!;
 function lock(){
   controls.disabled=posting||!connected||!state||state.locked;
   cut.disabled=controls.disabled||state?.cutStatus!=='ready';
+  cancelMaterial.hidden=!state?.canCancelLookup;
+  cancelMaterial.disabled=!connected||!state?.canCancelLookup;
 }
 function update(next:State) {
   if (drawing.id!==next.drawingId) {controls.disabled=true;location.reload();return;}
@@ -146,4 +149,17 @@ cut.onclick=async()=>{
     if (!reply.ok) throw Error(await reply.text());
   } catch(error) {byId('error').textContent=String(error);}
   finally {lock();}
+};
+
+cancelMaterial.onclick=async()=>{
+  if (cancelMaterial.disabled || !state) return;
+  cancelMaterial.disabled=true;
+  try {
+    const reply=await fetch('/cancel-material',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({epoch:state.epoch,revision:state.revision})});
+    if (!reply.ok) throw Error(await reply.text());
+  } catch(error) {
+    byId('error').textContent=String(error);
+    lock();
+  }
 };
