@@ -24,6 +24,8 @@ paths are excluded from the completion brief.
 - Host catalogs, artifact hashes, independent ORA layer reconstruction, exact
   material provenance, immutable-source refusals and native failure/cancellation
   settlement passed. The timing gate retains its 180 ms limit with ten samples.
+- Offline direct saves passed for both drawings with `CAD_MATERIAL_CODEX_BIN`
+  deliberately pointing to a nonexistent executable.
 - The native-render handoff revokes material cancellation; render supervision
   and artifact custody remain with the host.
 
@@ -42,6 +44,7 @@ pixel-equivalence approval is inferred from layer validity.
 
 The optional strict KRA pixel assertion remains unchanged and does not pass for
 these vise samples. The known difference is not hidden by a tolerance or by
-rewriting accepted artifacts. The final completion acceptance decision must
-explicitly account for this precision finding. Diagnostic encoder experiments
+rewriting accepted artifacts. The operator explicitly accepted complete delivery and editable layers with this
+precision finding documented as the completion criterion for this round. The
+strict KRA assertion is not reclassified as a pass. Diagnostic encoder experiments
 were confined to unaccepted copies; no domain release or accepted bytes changed.
