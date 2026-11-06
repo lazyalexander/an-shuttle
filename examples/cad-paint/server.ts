@@ -108,9 +108,10 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
         const reused=previous && materialReader && referencePart
           ? await (async()=>{
             const read=()=>readMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart,!!selection,lookup?.signal);
-            if (!selection) return read();
             const scope={document:drawing.id,part:referencePart,revision:previous.revision};
-            await authorizeMaterial(materialReader,scope.document,scope.part,lookup!.signal);
+            // Reused evidence also reaches completion context, even without a history-agent turn.
+            if (selection || needsCompletion) await authorizeMaterial(materialReader,scope.document,scope.part,lookup!.signal);
+            if (!selection) return read();
             return verifyMaterial(scope,read,lookup!.signal,materialTurn(folder));
           })()
           : undefined;

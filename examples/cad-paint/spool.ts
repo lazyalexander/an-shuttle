@@ -39,6 +39,7 @@ async function prepare(scene:SavedDrawing, revision:number, folder:string, drawi
   return {root, input, candidate:code===null ? null : candidate};
 }
 
+// The signal covers preparation; native render settlement stays with the host.
 export async function paint(scene:SavedDrawing, revision:number, folder:string, drawing:Model=benchVise,
                             epoch:string=randomUUID(), direction='', waiting=()=>{}, reused?:MaterialEvidence, signal:AbortSignal=new AbortController().signal, materialReady=()=>{}) {
   const runtime=process.env.CAD_PAINT_RUNTIME;

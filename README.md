@@ -185,6 +185,9 @@ parts, invalid colors and non-finite/out-of-range material values before a kit,
 render request or native instance exists. Supplied and reused materials cannot
 be overwritten. For mixed history/completion saves, the approved historical
 material is included as supplied context and retained verbatim in the kit.
+Exact reuse combined with another missing finish also requires the reader
+disclosure preflight before any derived material enters Codex. Exact reuse
+without completion remains offline and needs no remote disclosure grant.
 
 The cancellation button covers both material stages. Preparation checks the
 same abort signal before publishing the kit/request. Once preparation hands

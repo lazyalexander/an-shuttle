@@ -21,6 +21,10 @@ paths are excluded from the completion brief.
 - Both CAD drawings passed signed-in Codex completion, exact material reuse,
   history verification and mixed history-plus-completion. Supplied finishes and
   adopted evidence remained authoritative. The requested model was `gpt-6-sol`.
+- Live batch completion also passed for all four vise parts and two missing
+  handwheel parts in a single task.
+- Exact reuse plus completion requires the same disclosure preflight before
+  derived historical data reaches Codex; a local-only grant blocks it.
 - Host catalogs, artifact hashes, independent ORA layer reconstruction, exact
   material provenance, immutable-source refusals and native failure/cancellation
   settlement passed. The timing gate retains its 180 ms limit with ten samples.
