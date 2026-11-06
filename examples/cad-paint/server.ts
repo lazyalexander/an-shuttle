@@ -15,12 +15,11 @@ import {benchVise,parameterInput,saveDrawing,type Model,type MeshDrawing,type Sa
 import {openInKrita} from '@an-shuttle/krita/document.js';
 import {paint,paintStandalone} from './spool.js';
 import {askMaterialAgent,readPreviousMaterial} from './host.js';
-import {verifyMaterial,verifyMaterialWithHost} from './verify-material.js';
+import {verifyMaterialWithHost} from './verify-material.js';
 
 export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model,readMaterial=readPreviousMaterial,askAgent=askMaterialAgent}={}) {
   const referencePart=drawing.id==='handwheel' ? 'grip' : drawing.id==='vise' ? 'movingJaw' : null;
   const materialReader=(render===paint || readMaterial!==readPreviousMaterial) && referencePart ? process.env.CAD_MATERIAL_READER : undefined;
-  const useHostAgent=process.env.CAD_MATERIAL_HOST_AGENT==='1';
   let pendingLookup:AbortController|undefined;
   let lastAccepted:{folder:string;revision:number}|undefined;
   const epoch=randomUUID();
@@ -106,12 +105,10 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
         const folder=await mkdtemp(join(output,'drawing-'));
         const reused=previous && materialReader && referencePart
           ? await (async()=>{
-            const read=()=>readMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart,useHostAgent && !!lookup);
+            const read=()=>readMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart,!!lookup);
             if (!lookup) return read();
             const scope={document:drawing.id,part:referencePart,revision:previous.revision};
-            return useHostAgent
-              ? verifyMaterialWithHost(scope,read,lookup.signal,(stage,data,signal)=>askAgent(folder,stage,data,signal))
-              : verifyMaterial(scope.document,scope.part,scope.revision,read,lookup.signal);
+            return verifyMaterialWithHost(scope,read,lookup.signal,(stage,data,signal)=>askAgent(folder,stage,data,signal));
           })()
           : undefined;
         lookup?.signal.throwIfAborted();

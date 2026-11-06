@@ -101,10 +101,9 @@ test('OpenSCAD handwheel uses the same editor, locks and file delivery', {timeou
 test('cancel a pending material lookup from the handwheel editor', {timeout:60_000},async t=>{
   const drawing=await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
   const output=await mkdtemp(join(tmpdir(),'shuttle-browser-cancel-'));
-  const variables=['CAD_MATERIAL_READER','CAD_MATERIAL_HOST_AGENT'];
+  const variables=['CAD_MATERIAL_READER'];
   const original=variables.map(key=>process.env[key]);
   process.env.CAD_MATERIAL_READER='fixture-reader';
-  process.env.CAD_MATERIAL_HOST_AGENT='1';
   let reached=()=>{};
   const entered=new Promise<void>(resolve=>{reached=resolve;});
   let release=()=>{};

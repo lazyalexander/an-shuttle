@@ -115,7 +115,7 @@ test('a pending Krita launch cannot hold editing or replace a later revision’s
 });
 
 test('material adoption resolves only the current host evidence and rejects late decisions', async t => {
-  const {verifyMaterial}=await import('./verify-material.js');
+  const {verifyMaterialWithHost}=await import('./verify-material.js');
   const scope={document:'handwheel',part:'grip',revision:7};
   const evidence={
     schema:'cad-material-evidence-v1' as const, part:scope.part,
@@ -125,21 +125,19 @@ test('material adoption resolves only the current host evidence and rejects late
   };
   const controller=new AbortController();
   let mode='adopt', issuedId='', reads=0, decisions=0;
-  t.mock.method(globalThis,'fetch',async (_url:unknown, init:RequestInit)=>{
-    const request=JSON.parse(String(init.body));
-    if (request.tools.length) {
-      const args=mode==='outside-scope' ? {...scope,revision:8} : scope;
-      return Response.json({message:{role:'assistant',content:'',
-        tool_calls:[{function:{name:'read_approved_material',arguments:args}}]}});
+  const ask=async(stage:'request'|'adopt', data:object)=>{
+    if (stage==='request') {
+      const permitted=mode==='outside-scope' ? {...scope,revision:8} : scope;
+      return {action:'read_approved_material',...permitted};
     }
     decisions++;
-    const {evidence_id:id}=JSON.parse(request.messages.at(-1).content);
+    const {evidence_id:id}=data as {evidence_id:string};
     if (mode==='adopt') issuedId=id;
     if (mode==='cancelled') controller.abort(new Error('Lookup cancelled'));
-    return Response.json({message:{content:JSON.stringify({adopt:true,evidence_id:issuedId})}});
-  });
-  const verify=(signal?:AbortSignal)=>verifyMaterial(scope.document,scope.part,scope.revision,
-    async()=>{reads++;return evidence;},signal);
+    return {adopt:true,evidence_id:issuedId};
+  };
+  const verify=(signal:AbortSignal=new AbortController().signal)=>verifyMaterialWithHost(scope,
+    async()=>{reads++;return evidence;},signal,ask);
 
   assert.equal(await verify(),evidence);
   mode='previous-id';
@@ -149,8 +147,8 @@ test('material adoption resolves only the current host evidence and rejects late
   assert.equal(reads,2);
   assert.equal(decisions,2);
   mode='wrong-source';
-  await assert.rejects(verifyMaterial(scope.document,scope.part,scope.revision,
-    async()=>({...evidence,source:{...evidence.source,revision:8}})),/does not match the approved scope/);
+  await assert.rejects(verifyMaterialWithHost(scope,
+    async()=>({...evidence,source:{...evidence.source,revision:8}}),new AbortController().signal,ask),/does not match the approved scope/);
   assert.equal(decisions,2);
   mode='cancelled';
   await assert.rejects(verify(controller.signal),/Lookup cancelled/);
@@ -158,10 +156,9 @@ test('material adoption resolves only the current host evidence and rejects late
 
 test('save scopes the host material decision and blocks rendering after lookup cancellation', async t => {
   const output=await mkdtemp(join(tmpdir(),'shuttle-cancel-lookup-'));
-  const env=['CAD_MATERIAL_READER','CAD_MATERIAL_HOST_AGENT'] as const;
+  const env=['CAD_MATERIAL_READER'] as const;
   const before=env.map(key=>process.env[key]);
   process.env.CAD_MATERIAL_READER='fixture-reader';
-  process.env.CAD_MATERIAL_HOST_AGENT='1';
   let mode='adopt', rendered=0, reads=0;
   let releaseDecision=()=>{};
   let reachedDecision=()=>{};

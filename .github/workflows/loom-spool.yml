@@ -90,7 +90,6 @@ jobs:
           path: integrations/material-evidence
           persist-credentials: false
       - name: Browser save (vise)
-        if: ${{ false }}
         timeout-minutes: 4
         env:
           CAD_PAINT_FIXTURE: vise
@@ -121,19 +120,15 @@ jobs:
         env:
           CAD_PAINT_FIXTURE: handwheel
           CAD_PAINT_REAL_MODEL: 1
-          CAD_PAINT_CANCEL_ONLY: 1
           OLLAMA_MODEL: qwen3:0.6b
-          CAD_MATERIAL_HOST_AGENT: 1
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
       - name: Browser save (incomplete)
-        if: ${{ false }}
         timeout-minutes: 3
         env:
           CAD_PAINT_FIXTURE: incomplete
         run: node --test examples/cad-paint/dist/managed.test.js
       - name: Cancel an observed native paint attempt
-        if: ${{ false }}
         timeout-minutes: 3
         env:
           CAD_PAINT_FIXTURE: cancelled
@@ -148,7 +143,6 @@ jobs:
             find "$instance/runs" -name stderr.txt -exec tail -c 1000 {} \;
           done
       - name: Verify both accepted catalogs and the failure receipt
-        if: ${{ false }}
         run: '"$RUNNER_TEMP/paint-env/bin/python" -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTPUT"'
       - name: Direct save both CAD drawings without a model
         env:

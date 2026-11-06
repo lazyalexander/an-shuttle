@@ -19,8 +19,7 @@ test('a browser save delivers only the native host’s accepted products', {time
   const fixture=process.env.CAD_PAINT_FIXTURE;
   assert.ok(['vise','handwheel','incomplete','cancelled'].includes(fixture!));
   const liveModel=process.env.CAD_PAINT_REAL_MODEL==='1';
-  const hostAgent=process.env.CAD_MATERIAL_HOST_AGENT==='1';
-  if (hostAgent) assert.ok(process.env.CAD_MATERIAL_READER,'Host material acceptance requires the delegated reader');
+  const hostAgent=true; // Material decisions always use the shared approved host route.
   const liveHistory=hostAgent && liveModel && fixture==='handwheel';
   const cancelOnly=liveHistory && process.env.CAD_PAINT_CANCEL_ONLY==='1';
   const direct=process.env.CAD_PAINT_DIRECT==='1';
@@ -78,18 +77,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
         return;
       }
-      if (request.url==='/api/chat') {
-        const action=input.tools.length===1;
-        if (action) lookups++; else proofs++;
-        const result=liveModel
-          ? await fetch(new URL('/api/chat',upstream),{method:'POST',headers:{'Content-Type':'application/json'},
-            body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
-          : JSON.stringify({message:action
-            ? {role:'assistant',content:'',tool_calls:[{function:{name:'read_approved_material',arguments:JSON.parse(input.messages[1].content)}}]}
-            : {role:'assistant',content:JSON.stringify({adopt:true,evidence_id:JSON.parse(input.messages.at(-1).content).evidence_id})}});
-        response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
-        return;
-      }
+      assert.notEqual(request.url,'/api/chat','Historical material must not bypass the approved host model route');
       materials.push(input.format.required);
       const result=liveModel
         ? await fetch(new URL('/api/generate',upstream),{method:'POST',headers:{'Content-Type':'application/json'},
