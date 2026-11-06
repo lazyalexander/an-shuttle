@@ -58,6 +58,16 @@ Trimesh owns STL decoding; geometry processing is disabled, and the adapter pres
 
 The two demos share capture, locking, material negotiation, scene rendering, ORA delivery and cutting-spool handoff. Additional triangle-mesh assemblies with a single axis-aligned revolute joint can use the directory interface. A different native editor or another joint type needs its own integration.
 
+## Live Krita update
+
+`npm run studio -- --live` keeps CAD editable after **保存并绘制**. Confirmed
+revisions queue; the newest wins, superseded paintings are archived but not
+delivered, and a stale CAD base is still refused with 409. Instead of opening a
+new document per save, the studio asks the [Krita live plugin](packages/krita/plugin/README.md)
+to replace the locked `agent 渲染` group of `paintings/<drawing>/working.kra`.
+The `手绘` group belongs to the user and is never written. Without `--live` the
+qualified locked save above is unchanged.
+
 ## Loom package and Shuttle boundary
 
 A CAD save carries an intent, a fixed document revision, its observations and optional operator direction through `packages/cad/shuttle.ts`. The studio holds the CAD lock and hands that message to the domain agent. It gives the model the missing part labels, the existing finishes and the direction. With complete materials it can start the baseline directly.
@@ -77,7 +87,7 @@ host profiles still limit editable slots; this does not enable arbitrary self-ed
 | --- | --- |
 | `packages/view` | View binding, revision checks and serialized edits |
 | `packages/cad` | CAD snapshot validation, part identifiers and vise geometry |
-| `packages/krita` | Opening a local document; domain format generation stays in the pinned Loom spool |
+| `packages/krita` | Opening a local document and the live render-layer update plugin; domain format generation stays in the pinned Loom spool |
 | `examples/cad-paint` | Web CAD, lock owner and pinned painting-spool client |
 | `examples/plate` | Minimal plate editor demonstrating a bound view |
 

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=an_shuttle_live
+X-Python-2-Compatible=false
+Name=an-shuttle live update
+Comment=Replace agent render layers in place when a CAD revision is accepted

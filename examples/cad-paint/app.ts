@@ -66,8 +66,10 @@ function preview() {
   }
   byId('gapValue').textContent=parameterOf(s)+parameter.unit;
 }
-interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;artifact:string|null;message:string;canCut:boolean;cutStatus:string;materialReference:{part:string;revision:number}|null}
+interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;live:boolean;rendering:number|null;krita:number|null;artifact:string|null;message:string;canCut:boolean;cutStatus:string;materialReference:{part:string;revision:number}|null}
 let state:State|null=null, posting=false, connected=false;
+// In live mode the operator keeps editing after a save; do not reset their inputs to the scene they just sent.
+let sent:string|null=null;
 const cut = document.querySelector<HTMLButtonElement>('#cut')!;
 function lock(){
   controls.disabled=posting||!connected||!state||state.locked;
@@ -76,9 +78,11 @@ function lock(){
 function update(next:State) {
   if (drawing.id!==next.drawingId) {controls.disabled=true;location.reload();return;}
   const revisionChanged=!state || state.epoch!==next.epoch || state.revision!==next.revision;
+  const own=revisionChanged && next.live && sent!==null && JSON.stringify(next.scene)===sent;
+  if(revisionChanged) sent=null;
   state=next;
   lock();
-  if(revisionChanged) {
+  if(revisionChanged && !own) {
     input('reuseGrip').checked=false;
     input('verifyHistory').checked=false;
     input('gap').value=String(parameterOf(next.scene));
@@ -98,7 +102,8 @@ function update(next:State) {
   byId('historyOption').hidden=next.materialReference===null;
   byId('reuseGripLabel').textContent=next.materialReference
     ? '读取已获批修订 '+next.materialReference.revision+' 的'+drawing.parts[next.materialReference.part].label+'材质' : '';
-  byId('status').textContent=next.message;byId('version').textContent='CAD · 修订 '+next.revision;
+  byId('status').textContent=next.message;byId('version').textContent='CAD · 修订 '+next.revision+(next.live
+    ? ' · Krita 修订 '+(next.krita ?? '—')+(next.rendering!==null ? ' · 正在绘制 '+next.rendering : '') : '');
   const link=document.querySelector<HTMLAnchorElement>('#download')!;
   cut.hidden=!next.artifact||!next.canCut;
   cut.textContent=next.cutStatus==='sent'?'已送交切割 spool':next.cutStatus==='sending'?'正在送交…':'送交切割 spool';
@@ -124,6 +129,7 @@ byId('save').onclick=async()=>{
     const reuseMaterial=input('reuseGrip').checked ? reference?.revision : undefined;
     const materialHistory=input('verifyHistory').checked && reference ? 'last-accepted' : undefined;
     if (reference && (reuseMaterial!==undefined || materialHistory)) delete scene.materials[reference.part];
+    if(state.live) sent=JSON.stringify(scene);
     const request={epoch:state.epoch,revision:state.revision,scene,direction:input('direction').value,reuseMaterial,materialHistory};
     const reply=await fetch('/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)});
     if(!reply.ok) byId('error').textContent=await reply.text();

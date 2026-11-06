@@ -58,6 +58,14 @@ Trimesh拥有STL解码功能；几何处理被禁用，适配器保留零件名�
 
 两个演示共享捕获、锁定、材质协商、场景渲染、ORA交付和切割 spool 交接。带有单个轴对齐旋转关节的额外三角形网格装配可以使用目录接口。不同的原生编辑器或另一种关节类型需要其自身的集成。
 
+## Krita 实时更新
+
+`npm run studio -- --live` 下，点击 **保存并绘制** 后 CAD 仍可编辑。已确认的修订排队，
+最新的胜出；被取代的绘画只归档、不送 Krita；过期的 CAD 基线仍返回 409。studio 不再每次
+打开新文档，而是请 [Krita 实时插件](packages/krita/plugin/README.md) 替换
+`paintings/<drawing>/working.kra` 中锁定的 `agent 渲染` 组。`手绘` 组属于用户，
+从不被写入。不加 `--live` 时，上面经过验收的锁定保存不变。
+
 ## Loom包和Shuttle边界
 
 CAD保存携带一个意图、一个固定文档修订版本、其观察结果以及通过`packages/cad/shuttle.ts`的可选操作方向。工作室持有CAD锁，并将该消息传递给领域代理。它为模型提供缺失的零件标签、现有的表面处理和方向。具有完整材质时，可以直接启动基线。
@@ -77,7 +85,7 @@ CAD保存携带一个意图、一个固定文档修订版本、其观察结果�
 | --- | --- |
 | `packages/view` | 视图绑定、修订检查和串行编辑 |
 | `packages/cad` | CAD 快照验证、部件标识符和示例几何 |
-| `packages/krita` | 打开本地文档；领域格式生成仍保留在固定的Loomspool中 |
+| `packages/krita` | 打开本地文档，以及实时替换渲染层的插件；领域格式生成仍保留在固定的Loomspool中 |
 | `examples/cad-paint` | Web CAD、锁拥有者和固定的绘画spool客户端 |
 | `examples/plate` | 一个最小的板编辑器，演示绑定视图 |
 
