@@ -33,13 +33,13 @@ async function fakeKrita(t:test.TestContext, answer:(request:Record<string,unkno
 test('the Krita client checks receipts and reports refusals',async t=>{
   let mode='ok';
   const {socket,requests}=await fakeKrita(t,request=>mode==='ok'
-    ? {ok:true,document:request.document,revision:request.revision,layers:{base:digest},preserved:[],created:true}
-    : mode==='wrong' ? {ok:true,document:request.document,revision:99,layers:{},preserved:[],created:false}
+    ? {ok:true,document:request.document,revision:request.revision,stage:request.stage,layers:{base:digest},preserved:[],created:true}
+    : mode==='wrong' ? {ok:true,document:request.document,revision:request.revision,stage:'preview',layers:{},preserved:[],created:false}
     : {ok:false,code:'stale-revision',message:'document already at revision 5'});
   const krita=kritaLive(socket);
   const receipt=await krita.apply('/work/vise.kra',3,'/out/painting.ora');
-  assert.deepEqual(receipt,{document:'/work/vise.kra',revision:3,layers:{base:digest},preserved:[],created:true});
-  assert.deepEqual(requests[0],{protocol,method:'apply',document:'/work/vise.kra',revision:3,ora:'/out/painting.ora'});
+  assert.deepEqual(receipt,{document:'/work/vise.kra',revision:3,stage:'final',layers:{base:digest},preserved:[],created:true});
+  assert.deepEqual(requests[0],{protocol,method:'apply',document:'/work/vise.kra',revision:3,ora:'/out/painting.ora',stage:'final'});
   mode='wrong';
   await assert.rejects(krita.apply('/work/vise.kra',3,'/out/painting.ora'),/does not match/);
   mode='refuse';
@@ -48,12 +48,18 @@ test('the Krita client checks receipts and reports refusals',async t=>{
   await assert.rejects(kritaLive(join(tmpdir(),'missing-krita.sock')).pending('/work/vise.kra',1));
 });
 
-async function liveStudio(t:test.TestContext, live:KritaLive) {
+async function liveStudio(t:test.TestContext, live:KritaLive, preview=false) {
   const output=await mkdtemp(join(tmpdir(),'shuttle-live-'));
-  const gates=new Map<number,()=>void>(), renders:number[]=[];
-  const server=studio(0,{output,live,render:async(_scene,revision,folder)=>{
-    renders.push(revision);
-    await new Promise<void>(done=>gates.set(revision,done));
+  // Gates are keyed by revision (final) or 'revision:preview'.
+  const gates=new Map<number|string,()=>void>(), renders:(number|string)[]=[], aborted:(number|string)[]=[];
+  const server=studio(0,{output,live,preview,render:async(_scene,revision,folder,_d,_e,_dir,_w,_r,options)=>{
+    const key=options?.quality==='preview' ? revision+':preview' : revision;
+    renders.push(key);
+    await new Promise<void>((done,fail)=>{
+      if(options?.signal?.aborted) {aborted.push(key);return fail(Error('aborted'));}
+      gates.set(key,done);
+      options?.signal?.addEventListener('abort',()=>{aborted.push(key);fail(Error('aborted'));});
+    });
     return join(folder,'painting.ora');
   },open:async()=>{throw Error('live mode must not open a new document');}});
   await once(server,'listening');
@@ -72,15 +78,15 @@ async function liveStudio(t:test.TestContext, live:KritaLive) {
     for(let i=0;i<200;i++){const s=await state(); if(check(s)) return s; await new Promise(r=>setTimeout(r,10));}
     assert.fail('state never reached: '+JSON.stringify(await state()));
   }
-  const release=async(revision:number)=>{await until(()=>gates.has(revision)); gates.get(revision)!();};
-  return {output,state,save,until,release,renders};
+  const release=async(key:number|string)=>{await until(()=>gates.has(key)); gates.get(key)!();};
+  return {state,save,until,release,renders,aborted};
 }
 
 test('CAD stays editable while painting and only the newest revision reaches Krita',{timeout:10_000},async t=>{
   const applied:number[]=[], pending:number[]=[];
-  const {state,save,until,release,renders}=await liveStudio(t,{
+  const {state,save,until,release,renders,aborted}=await liveStudio(t,{
     async pending(_document,revision){pending.push(revision);},
-    async apply(document,revision){applied.push(revision);return {document,revision,layers:{},preserved:[],created:applied.length===1};},
+    async apply(document,revision){applied.push(revision);return {document,revision,stage:'final',layers:{},preserved:[],created:applied.length===1};},
   });
   const initial=await state();
   assert.equal(initial.live,true);
@@ -91,14 +97,16 @@ test('CAD stays editable while painting and only the newest revision reaches Kri
   const second=await (await save(first)).json(); assert.equal(second.revision,2);
   const third=await (await save(second)).json(); assert.equal(third.revision,3);
   assert.equal((await save(first)).status,409,'a stale CAD base is still refused');
-  await release(1);
+  // Each newer confirmation stops the render in flight; revision 2 may or may not have started.
   await until(s=>s.rendering===3);
-  assert.match((await state()).message,/修订 1 已归档 · 已被修订 3 取代/);
+  assert.equal(aborted[0],1);
+  assert.match((await state()).message,/已停止 · 被修订 3 取代/);
   await release(3);
   const done=await until(s=>s.rendering===null && s.krita===3);
-  assert.deepEqual(renders,[1,3]);
+  assert.deepEqual(renders.filter(r=>r!==2),[1,3]);
+  assert.deepEqual(aborted.filter(r=>r!==2),[1]);
   assert.deepEqual(applied,[3]);
-  assert.deepEqual(pending,[1,3]);
+  assert.deepEqual(pending.filter(r=>r!==2),[1,3]);
   assert.match(done.message,/Krita 已更新到修订 3/);
   assert.ok(done.artifact);
 });
@@ -129,4 +137,30 @@ test('without a Krita shuttle the qualified locked save is unchanged',{timeout:1
   const reply=await fetch(url+'/save',{method:'POST',headers:{origin:url,'content-type':'application/json'},body:JSON.stringify(initial)});
   const saved=await reply.json();
   assert.equal(saved.revision,1); assert.equal(saved.locked,false); assert.match(saved.message,/素材已生成/);
+});
+
+test('a preview reaches Krita first, then the final render of the same revision',{timeout:10_000},async t=>{
+  const applied:string[]=[];
+  const {state,save,until,release,renders,aborted}=await liveStudio(t,{
+    async pending(){},
+    async apply(document,revision,_ora,stage='final',session){assert.ok(session);applied.push(revision+':'+stage);
+      return {document,revision,stage,layers:{},preserved:[],created:false};},
+  },true);
+  const initial=await state();
+  assert.equal(initial.preview,true);
+  const first=await (await save(initial)).json();
+  await release('1:preview');
+  const shown=await until(s=>s.krita===1 && s.kritaStage==='preview');
+  assert.match(shown.message,/（预览）· 正在精绘/);
+  assert.equal(shown.artifact,null,'only a final render becomes the downloadable artifact');
+  // A new confirmation while revision 1 is being finished stops that final render.
+  await save(first);
+  await until(()=>aborted.length===1);
+  await release('2:preview');
+  await release(2);
+  const done=await until(s=>s.rendering===null && s.krita===2 && s.kritaStage==='final');
+  assert.deepEqual(renders,['1:preview',1,'2:preview',2]);
+  assert.deepEqual(aborted,[1]);
+  assert.deepEqual(applied,['1:preview','2:preview','2:final']);
+  assert.ok(done.artifact);
 });

@@ -66,6 +66,11 @@ Trimesh拥有STL解码功能；几何处理被禁用，适配器保留零件名�
 `paintings/<drawing>/working.kra` 中锁定的 `agent 渲染` 组。`手绘` 组属于用户，
 从不被写入。不加 `--live` 时，上面经过验收的锁定保存不变。
 
+加上 `--preview` 后，每个修订会两次送到 Krita：先是 8 次采样的预览，再是 96 次采样的精绘。
+新的确认会立即停止正在进行的 standalone 渲染。两者都需要接受请求 `quality` 字段的 spool；
+在其发布之前，`--standalone` 可以用 `CAD_PAINT_SPOOL_DIR` 指向本地 an-loom 的
+`examples/cad-paint`。2026-11-06 在 macOS 上实测，预览在点击后约 1.5 秒到达 Krita，精绘约 5 秒。
+
 ## Loom包和Shuttle边界
 
 CAD保存携带一个意图、一个固定文档修订版本、其观察结果以及通过`packages/cad/shuttle.ts`的可选操作方向。工作室持有CAD锁，并将该消息传递给领域代理。它为模型提供缺失的零件标签、现有的表面处理和方向。具有完整材质时，可以直接启动基线。

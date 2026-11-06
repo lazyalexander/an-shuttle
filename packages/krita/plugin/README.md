@@ -15,8 +15,11 @@ The working document (`paintings/<drawing>/working.kra`) has two groups:
 While a revision renders, Krita only shows "正在更新到第 N 版" and the hand group
 stays editable. The window is disabled just for the replacement and save. If a
 render layer was unlocked and painted on, a copy moves into `手绘` before it is
-replaced. Older or repeated revisions are refused. The shuttle records the
-revision and render-layer digests in `working.kra.an-shuttle.json` beside it.
+replaced. Older or repeated revisions are refused; within one revision a
+`preview` may be followed by its `final`. Revision order is scoped to the studio
+`session`, because numbers restart when the studio restarts. The shuttle records
+the session, revision, stage and render-layer digests in
+`working.kra.an-shuttle.json` beside it.
 
 ## Install
 

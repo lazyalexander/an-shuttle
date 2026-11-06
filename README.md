@@ -68,6 +68,13 @@ to replace the locked `agent 渲染` group of `paintings/<drawing>/working.kra`.
 The `手绘` group belongs to the user and is never written. Without `--live` the
 qualified locked save above is unchanged.
 
+Add `--preview` to send each revision to Krita twice: first an 8-sample preview,
+then the 96-sample final. A newer confirmation stops a standalone render in
+flight. Both need a spool that accepts the request `quality` field; until it is
+released, `CAD_PAINT_SPOOL_DIR` can select a local an-loom `examples/cad-paint`
+checkout for `--standalone`. On a 2026-11-06 macOS run the preview reached Krita
+about 1.5 s after the click and the final about 5 s after it.
+
 ## Loom package and Shuttle boundary
 
 A CAD save carries an intent, a fixed document revision, its observations and optional operator direction through `packages/cad/shuttle.ts`. The studio holds the CAD lock and hands that message to the domain agent. It gives the model the missing part labels, the existing finishes and the direction. With complete materials it can start the baseline directly.

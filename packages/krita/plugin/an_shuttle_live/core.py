@@ -19,6 +19,8 @@ HAND_GROUP = "手绘"
 MAX_REQUEST = 64 * 1024
 MAX_LAYER_BYTES = 64 * 1024 * 1024
 MAX_SIDE = 16384
+# A preview and the final render of one revision share its number; the final ranks later.
+STAGES = {"preview": 0, "final": 1}
 
 
 class Refusal(Exception):
@@ -90,15 +92,20 @@ def read_state(document):
     except FileNotFoundError:
         return None
     if state.get("protocol") != PROTOCOL or not isinstance(state.get("revision"), int) \
-            or not isinstance(state.get("layers"), dict):
+            or not isinstance(state.get("layers"), dict) or state.get("stage", "final") not in STAGES:
         raise Refusal("bad-state", "unreadable shuttle state beside the document")
     return state
 
 
-def write_state(document, revision, layers):
+def position(state):
+    return state["revision"], STAGES[state.get("stage", "final")]
+
+
+def write_state(document, revision, layers, stage="final", session=None):
     path, temporary = sidecar(document), sidecar(document) + ".tmp"
     with open(temporary, "w", encoding="utf-8") as handle:
-        json.dump({"protocol": PROTOCOL, "revision": revision, "layers": layers}, handle, ensure_ascii=False)
+        json.dump({"protocol": PROTOCOL, "revision": revision, "stage": stage, "session": session, "layers": layers},
+                  handle, ensure_ascii=False)
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary, path)
@@ -122,6 +129,11 @@ def parse(line):
         raise Refusal("bad-request", "revision must be a positive integer")
     if method == "apply" and (not isinstance(request.get("ora"), str) or not os.path.isabs(request["ora"])):
         raise Refusal("bad-request", "ora must be an absolute path")
+    if request.setdefault("stage", "final") not in STAGES:
+        raise Refusal("bad-request", "stage must be preview or final")
+    session = request.setdefault("session", None)
+    if session is not None and (not isinstance(session, str) or not 0 < len(session) <= 100):
+        raise Refusal("bad-request", "session must be a short string")
     return request
 
 
@@ -132,7 +144,8 @@ def handle(line, krita):
         if request["method"] == "pending":
             krita.message(request["document"], "正在更新到第 %d 版 · 手绘层可以继续画" % request["revision"])
             return {"protocol": PROTOCOL, "ok": True}
-        return dict(apply(request["document"], request["revision"], request["ora"], krita),
+        return dict(apply(request["document"], request["revision"], request["ora"], krita, request["stage"],
+                          request["session"]),
                     protocol=PROTOCOL, ok=True)
     except Refusal as refusal:
         return {"protocol": PROTOCOL, "ok": False, "code": refusal.code, "message": str(refusal)}
@@ -140,11 +153,13 @@ def handle(line, krita):
         return {"protocol": PROTOCOL, "ok": False, "code": "krita-error", "message": str(error)[:300]}
 
 
-def apply(document, revision, ora, krita):
+def apply(document, revision, ora, krita, stage="final", session=None):
     painting = read_ora(ora)
     state = read_state(document)
-    if state is not None and revision <= state["revision"]:
-        raise Refusal("stale-revision", "document is already at revision %d" % state["revision"])
+    # Revision numbers restart with each studio session; order applies only within one session.
+    if state is not None and state.get("session") == session and (revision, STAGES[stage]) <= position(state):
+        raise Refusal("stale-revision", "document is already at revision %d (%s)"
+                      % (state["revision"], state.get("stage", "final")))
     created = False
     doc = krita.find(document)
     if doc is None:
@@ -171,7 +186,7 @@ def apply(document, revision, ora, krita):
                 krita.remove(doc, name)
         layers = krita.replace(doc, painting)
         krita.save(doc)
-    write_state(document, revision, layers)
-    krita.message(document, "已更新到第 %d 版" % revision)
-    return {"document": document, "revision": revision, "layers": layers,
+    write_state(document, revision, layers, stage, session)
+    krita.message(document, ("第 %d 版预览 · 正在精绘" if stage == "preview" else "已更新到第 %d 版") % revision)
+    return {"document": document, "revision": revision, "stage": stage, "layers": layers,
             "preserved": preserved, "created": created}

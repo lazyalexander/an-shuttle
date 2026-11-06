@@ -14,12 +14,13 @@ import {defaultCamera} from '@an-shuttle/cad/scene.js';
 import {benchVise,parameterInput,saveDrawing,type Model,type MeshDrawing,type SavedDrawing} from '@an-shuttle/cad/drawing.js';
 import {openInKrita} from '@an-shuttle/krita/document.js';
 import {kritaLive,type KritaLive} from '@an-shuttle/krita/live.js';
-import {paint,paintStandalone} from './spool.js';
+import {paint,paintStandalone,type Quality} from './spool.js';
 import {readPreviousMaterial} from './host.js';
 import {verifyMaterial} from './verify-material.js';
 
 export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model,
-  live}:{output?:string;render?:typeof paint;open?:typeof openInKrita;cut?:typeof configuredCut;drawing?:Model;live?:KritaLive}={}) {
+  live,preview=false}:{output?:string;render?:typeof paint;open?:typeof openInKrita;cut?:typeof configuredCut;drawing?:Model;
+  live?:KritaLive;preview?:boolean}={}) {
   const referencePart=drawing.id==='handwheel' ? 'grip' : drawing.id==='vise' ? 'movingJaw' : null;
   const materialReader=render===paint && referencePart ? process.env.CAD_MATERIAL_READER : undefined;
   let lastAccepted:{folder:string;revision:number}|undefined;
@@ -29,18 +30,20 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
   // Krita updates one working document in place. Without it the qualified locked save remains.
   const work=resolve(output,drawing.id,'working.kra');
   type Job={revision:number;scene:SavedDrawing;direction:string;previous?:{folder:string;revision:number};selection?:string};
-  let queued:Job|null=null, rendering:number|null=null, krita:number|null=null;
+  let queued:Job|null=null, rendering:number|null=null, krita:number|null=null, kritaStage:Quality|null=null;
+  // Aborting only stops a standalone renderer early; any result of a superseded revision is never delivered.
+  let inFlight:AbortController|null=null;
   let scene:SavedDrawing={...parameterInput(drawing.parameter.initial,drawing),camera:defaultCamera,materials:drawing.materials};
   let direction='';
   let message='就绪', artifact:string|null=null;
   let paintingFile: string|null = null;
   let cutStatus: 'ready'|'sending'|'sent' = 'ready';
   const clients=new Set<ServerResponse>();
-  const state=()=>({epoch,revision,locked,live:!!live,rendering,krita,drawingId:drawing.id,scene,direction,message,artifact,canCut:!!cut,cutStatus,materialReference:materialReader && lastAccepted ? {part:referencePart,revision:lastAccepted.revision} : null,gripReference:materialReader && referencePart==='grip' ? lastAccepted?.revision ?? null : null});
+  const state=()=>({epoch,revision,locked,live:!!live,preview:!!live&&preview,rendering,krita,kritaStage,drawingId:drawing.id,scene,direction,message,artifact,canCut:!!cut,cutStatus,materialReference:materialReader && lastAccepted ? {part:referencePart,revision:lastAccepted.revision} : null,gripReference:materialReader && referencePart==='grip' ? lastAccepted?.revision ?? null : null});
   function publish() {
     for(const client of clients) client.write('data: '+JSON.stringify(state())+'\n\n');
   }
-  async function produce(job:Job, waiting:()=>void) {
+  async function produce(job:Job, waiting:()=>void, quality:Quality='final', signal?:AbortSignal) {
     const {previous,selection}=job;
     await mkdir(output,{recursive:true});
     const folder=await mkdtemp(join(output,'drawing-'));
@@ -50,7 +53,7 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
             () => readPreviousMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart))
         : readPreviousMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart))
       : undefined;
-    const file=await render(job.scene,job.revision,folder,drawing,epoch,job.direction,waiting,reused);
+    const file=await render(job.scene,job.revision,folder,drawing,epoch,job.direction,waiting,reused,{quality,signal});
     return {folder,file};
   }
   const failure=(error:unknown)=>(error instanceof Error?error.message:String(error)).slice(0,220);
@@ -60,23 +63,31 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
       const job=queued; queued=null; rendering=job.revision; publish();
       // Only a hint: Krita stays editable while the agent renders.
       void live.pending(work,job.revision).catch(()=>{});
-      let produced;
-      try {
-        produced=await produce(job,()=>{message='等待宿主确认修订 '+job.revision+' 的绘制终止';publish();});
-      } catch(error) {message='修订 '+job.revision+' 绘制失败 · '+failure(error);publish();continue;}
-      lastAccepted={folder:produced.folder,revision:job.revision};
-      // A save may have queued a newer revision while this one rendered.
-      const newer=queued as Job|null;
-      if(newer) {message='修订 '+job.revision+' 已归档 · 已被修订 '+newer.revision+' 取代，不送 Krita';publish();continue;}
-      paintingFile=produced.file; artifact='/assets/'+basename(produced.folder); cutStatus='ready';
-      message='修订 '+job.revision+' 已生成 · 正在更新 Krita';publish();
-      try {
-        const receipt=await live.apply(work,job.revision,produced.file);
-        krita=job.revision;
-        message='Krita 已更新到修订 '+job.revision+(receipt.preserved.length
-          ? ' · 手动改过的渲染层已移入手绘组：'+receipt.preserved.join('、') : '');
-      } catch(error) {message='修订 '+job.revision+' 已归档 · Krita 未更新：'+failure(error);}
-      publish();
+      const superseded=()=>(queued as Job|null)?.revision;
+      const stages:Quality[]=preview ? ['preview','final'] : ['final'];
+      for(const stage of stages) {
+        const label=!preview ? '' : stage==='preview' ? '预览' : '精绘';
+        inFlight=new AbortController();
+        let produced;
+        try {
+          produced=await produce(job,()=>{message='等待宿主确认修订 '+job.revision+' 的绘制终止';publish();},stage,inFlight.signal);
+        } catch(error) {
+          message=superseded()!==undefined ? '修订 '+job.revision+' 已停止 · 被修订 '+superseded()+' 取代'
+            : '修订 '+job.revision+' '+label+(label?'':'绘制')+'失败 · '+failure(error);
+          publish();break;
+        } finally {inFlight=null;}
+        if(stage==='final') lastAccepted={folder:produced.folder,revision:job.revision};
+        if(superseded()!==undefined) {message='修订 '+job.revision+' '+label+'已归档 · 已被修订 '+superseded()+' 取代，不送 Krita';publish();break;}
+        if(stage==='final') {paintingFile=produced.file; artifact='/assets/'+basename(produced.folder); cutStatus='ready';}
+        message='修订 '+job.revision+' '+label+'已生成 · 正在更新 Krita';publish();
+        try {
+          const receipt=await live.apply(work,job.revision,produced.file,stage,epoch);
+          krita=job.revision; kritaStage=stage;
+          message='Krita 已更新到修订 '+job.revision+(stage==='preview' ? '（预览）· 正在精绘' : '')+(receipt.preserved.length
+            ? ' · 手动改过的渲染层已移入手绘组：'+receipt.preserved.join('、') : '');
+        } catch(error) {message='修订 '+job.revision+' '+label+'已归档 · Krita 未更新：'+failure(error);}
+        publish();
+      }
     }
     rendering=null; publish();
   }
@@ -139,6 +150,7 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
       if(live) {
         scene=frozen; revision++;
         queued={revision,scene:frozen,direction,previous,selection};
+        inFlight?.abort();
         message='CAD 修订 '+revision+' 已确认 · '+(rendering===null?'开始绘制':'排在修订 '+rendering+' 之后')+' · CAD 可继续编辑';
         publish(); void drain();
         return send(200,'application/json',JSON.stringify(state()));
@@ -180,10 +192,11 @@ export async function loadDrawing(folder:string): Promise<MeshDrawing> {
   return model;
 }
 if(process.argv[1] && pathToFileURL(process.argv[1]).href===import.meta.url) {
-  const {values,positionals}=parseArgs({options:{standalone:{type:'boolean'},live:{type:'boolean'}},allowPositionals:true});
+  const {values,positionals}=parseArgs({options:{standalone:{type:'boolean'},live:{type:'boolean'},preview:{type:'boolean'}},allowPositionals:true});
+  if(values.preview && !values.live) throw Error('--preview requires --live');
   if(positionals.length>1) throw Error('Expected one optional CAD directory');
   const [folder]=positionals;
   const drawing=folder ? await loadDrawing(folder) : benchVise;
   const port=Number(process.env.PORT ?? 4183);
-  studio(port,{drawing,render:values.standalone ? paintStandalone : paint,live:values.live ? kritaLive() : undefined}).on('listening',()=>console.log('Open http://127.0.0.1:'+port));
+  studio(port,{drawing,render:values.standalone ? paintStandalone : paint,live:values.live ? kritaLive() : undefined,preview:values.preview}).on('listening',()=>console.log('Open http://127.0.0.1:'+port));
 }

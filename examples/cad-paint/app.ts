@@ -66,7 +66,7 @@ function preview() {
   }
   byId('gapValue').textContent=parameterOf(s)+parameter.unit;
 }
-interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;live:boolean;rendering:number|null;krita:number|null;artifact:string|null;message:string;canCut:boolean;cutStatus:string;materialReference:{part:string;revision:number}|null}
+interface State {drawingId:string;epoch:string;revision:number;scene:SavedDrawing;direction:string;locked:boolean;live:boolean;rendering:number|null;krita:number|null;kritaStage:'preview'|'final'|null;artifact:string|null;message:string;canCut:boolean;cutStatus:string;materialReference:{part:string;revision:number}|null}
 let state:State|null=null, posting=false, connected=false;
 // In live mode the operator keeps editing after a save; do not reset their inputs to the scene they just sent.
 let sent:string|null=null;
@@ -103,7 +103,7 @@ function update(next:State) {
   byId('reuseGripLabel').textContent=next.materialReference
     ? '读取已获批修订 '+next.materialReference.revision+' 的'+drawing.parts[next.materialReference.part].label+'材质' : '';
   byId('status').textContent=next.message;byId('version').textContent='CAD · 修订 '+next.revision+(next.live
-    ? ' · Krita 修订 '+(next.krita ?? '—')+(next.rendering!==null ? ' · 正在绘制 '+next.rendering : '') : '');
+    ? ' · Krita 修订 '+(next.krita ?? '—')+(next.kritaStage==='preview' ? '（预览）' : '')+(next.rendering!==null ? ' · 正在绘制 '+next.rendering : '') : '');
   const link=document.querySelector<HTMLAnchorElement>('#download')!;
   cut.hidden=!next.artifact||!next.canCut;
   cut.textContent=next.cutStatus==='sent'?'已送交切割 spool':next.cutStatus==='sending'?'正在送交…':'送交切割 spool';

@@ -13,6 +13,7 @@ export const protocol = 'an-shuttle-krita-live-v1';
 export interface KritaReceipt {
   document: string;
   revision: number;
+  stage: 'preview'|'final';
   /** SHA-256 of each render layer's pixels after the update. */
   layers: Record<string, string>;
   /** Render layers the user had painted on; they were moved into the hand group first. */
@@ -24,7 +25,8 @@ export interface KritaLive {
   /** Show that a newer CAD revision is being rendered. The document stays editable. */
   pending(document: string, revision: number): Promise<void>;
   /** Replace the render layers with an accepted OpenRaster product. */
-  apply(document: string, revision: number, ora: string): Promise<KritaReceipt>;
+  /** `session` scopes revision order: numbers restart when a new studio session begins. */
+  apply(document: string, revision: number, ora: string, stage?: 'preview'|'final', session?: string): Promise<KritaReceipt>;
 }
 
 export class KritaRefusal extends Error {
@@ -69,15 +71,15 @@ export function call(socket: string, request: object, timeout = 30_000): Promise
   });
 }
 
-function receipt(value: Record<string, unknown>, document: string, revision: number): KritaReceipt {
+function receipt(value: Record<string, unknown>, document: string, revision: number, stage: 'preview'|'final'): KritaReceipt {
   const layers = value.layers, preserved = value.preserved;
-  if (value.document !== document || value.revision !== revision ||
+  if (value.document !== document || value.revision !== revision || value.stage !== stage ||
       !layers || typeof layers !== 'object' || Array.isArray(layers) ||
       !Object.values(layers).every(digest => typeof digest === 'string' && /^[0-9a-f]{64}$/.test(digest)) ||
       !Array.isArray(preserved) || !preserved.every(name => typeof name === 'string') ||
       typeof value.created !== 'boolean')
     throw Error('Krita receipt does not match the requested update');
-  return {document, revision, layers: layers as Record<string, string>, preserved: preserved as string[], created: value.created};
+  return {document, revision, stage, layers: layers as Record<string, string>, preserved: preserved as string[], created: value.created};
 }
 
 export function kritaLive(socket = defaultSocket()): KritaLive {
@@ -85,8 +87,9 @@ export function kritaLive(socket = defaultSocket()): KritaLive {
     async pending(document, revision) {
       await call(socket, {method: 'pending', document, revision}, 5_000);
     },
-    async apply(document, revision, ora) {
-      return receipt(await call(socket, {method: 'apply', document, revision, ora}), document, revision);
+    async apply(document, revision, ora, stage = 'final', session) {
+      return receipt(await call(socket, {method: 'apply', document, revision, ora, stage, ...(session ? {session} : {})}),
+                     document, revision, stage);
     },
   };
 }

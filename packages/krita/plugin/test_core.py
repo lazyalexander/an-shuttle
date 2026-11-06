@@ -68,8 +68,12 @@ class FakeKrita:
         self.log.append(("message", text))
 
 
-def request(method, document, revision, ora=None):
+def request(method, document, revision, ora=None, stage=None, session=None):
     body = {"protocol": core.PROTOCOL, "method": method, "document": document, "revision": revision}
+    if session:
+        body["session"] = session
+    if stage:
+        body["stage"] = stage
     if ora:
         body["ora"] = ora
     return json.dumps(body)
@@ -84,8 +88,8 @@ class ShuttleRules(unittest.TestCase):
         self.krita = FakeKrita()
         self.ora = os.path.abspath(SAMPLE)
 
-    def apply(self, revision):
-        return core.handle(request("apply", self.document, revision, self.ora), self.krita)
+    def apply(self, revision, stage=None, session=None):
+        return core.handle(request("apply", self.document, revision, self.ora, stage, session), self.krita)
 
     def test_reads_the_sample_flat_stack(self):
         painting = core.read_ora(self.ora)
@@ -121,6 +125,28 @@ class ShuttleRules(unittest.TestCase):
         self.assertTrue(reply["ok"], reply)
         self.assertEqual(reply["preserved"], ["movingJaw"])
         self.assertEqual(self.krita.docs[self.document]["hand"], ["手绘 1", "movingJaw · 修订 2 前的手动修改"])
+
+    def test_a_preview_is_followed_by_the_final_of_the_same_revision(self):
+        preview = self.apply(1, "preview")
+        self.assertTrue(preview["ok"], preview)
+        self.assertEqual(preview["stage"], "preview")
+        final = self.apply(1)
+        self.assertTrue(final["ok"], final)
+        self.assertEqual(final["stage"], "final")
+        for revision, stage in ((1, "preview"), (1, "final")):
+            self.assertEqual(self.apply(revision, stage)["code"], "stale-revision")
+        self.assertTrue(self.apply(2, "preview")["ok"])
+        self.assertEqual(core.read_state(self.document)["stage"], "preview")
+
+    def test_a_new_studio_session_restarts_revision_order(self):
+        self.assertTrue(self.apply(3, session="first")["ok"])
+        self.assertEqual(self.apply(2, session="first")["code"], "stale-revision")
+        restarted = self.apply(1, session="second")
+        self.assertTrue(restarted["ok"], restarted)
+        self.assertEqual(self.apply(1, session="second")["code"], "stale-revision")
+
+    def test_unknown_stage_is_refused(self):
+        self.assertEqual(self.apply(1, "draft")["code"], "bad-request")
 
     def test_pending_only_shows_a_message(self):
         reply = core.handle(request("pending", self.document, 4), self.krita)
