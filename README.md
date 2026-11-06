@@ -1,5 +1,7 @@
 # an-shuttle
 
+English · [简体中文](README.zh-CN.md)
+
 Shuttle connects an application view to a local workflow. The CAD painting example turns one saved revision of a small parametric bench vise into a transparent painting that can be opened independently in Krita.
 
 ![CPU rendering of the vise](examples/cad-paint/sample/vise.png)
