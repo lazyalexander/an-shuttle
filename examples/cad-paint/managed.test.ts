@@ -64,7 +64,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         if (liveModel) {
           const modelReply=JSON.parse(result);
           console.log(JSON.stringify({stage:packet.source,finishReason:modelReply.choices[0].finish_reason,
-            usage:modelReply.usage}));
+            usage:modelReply.usage,reply:modelReply.choices[0].message.content}));
         }
         if (holding) {
           const reply=JSON.parse(JSON.parse(result).choices[0].message.content);
