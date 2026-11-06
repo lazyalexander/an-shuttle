@@ -24,7 +24,7 @@ npm run studio
 
 访问 http://127.0.0.1:4183 ，调整钳口开度、相机和表面材质。点击 **保存并绘制**。提交保存的 CAD 窗口会立即锁定。服务器在等待任何工作之前锁定保存的修订版本，将锁定广播到所有连接的CAD窗口，并拒绝并发或过时的保存。断开连接的窗口将保持禁用状态，直到重新连接。绘画工作台在成功时发布两件已验收的产物，并在等待Krita打开之前释放CAD锁。确认任务已失败终止后解锁，页面不提供下载。如果等待的CLI丢失了结果，工作室将保持锁并检查同一次受监管的执行是否已经终止。
 
-spool使用提供的相机和灯光。省略相机时使用默认的四分之三视角，省略灯光时随机选择照明方位角。为四个部件全部指定材质即可离线渲染。若要向模型请求缺失的表面处理，启动本地Ollama并使用支持结构化JSON的下载模型。将 `OLLAMA_MODEL` 设置为其名称（默认 `qwen3:8b`），并可选地将 `OLLAMA_HOST` 设置为其基础URL（默认 `http://127.0.0.1:11434`）。模型失败会在CAD界面中报告。
+spool 使用提供的相机和灯光；未指定时采用默认视角或随机照明方位。已提供全部材质时离线渲染。缺失材质与历史查证共用 Codex：安装 `@openai/codex@0.166.0` 并通过 `codex login` 登录，以 `CAD_MATERIAL_CODEX_BIN` 和 `CAD_MATERIAL_CODEX_MODEL` 选择已审阅的程序与可用模型。无需本地模型服务、下载权重或配置 Ollama。模型失败会使本次保存失败。
 
 Mitsuba在CPU上对保存的几何体进行路径追踪。一个单独的可见性通道将可见像素分配给底座、五金件、固定钳口和活动钳口。每次交付都会检查四个图层的合成结果是否与透明 PNG 逐字节一致。独立的 ORA 包含材质和照明等已经确定的场景参数。如需更精细的编辑，请在启动工作室前将 `CUT_SPOOL_BIN` 设置为本地切割spool可执行文件。**送交切割 spool** 将绝对ORA路径作为单个参数传递。退出码为零表示接收成功。交接是可选的，CAD在切割器运行期间仍可编辑。每次保存都会在 `paintings/` 下创建自己的文件夹。Shuttle请求本地Krita打开文档，同时提供下载。将 `KRITA_BIN` 设置以选择本地绘画应用。
 
@@ -95,7 +95,7 @@ CAD保存携带一个意图、一个固定文档修订版本、其观察结果�
 
 使用 `.github/workflows/loom-spool.yml` 进行新鲜环境的配方。它会分别运行 `managed.test.js`，并将 `CAD_PAINT_FIXTURE` 设置为 `vise`、`handwheel`、`incomplete` 和 `cancelled`。取消操作会等待实际的渲染器活动，调用现有的宿主监督者，并需要任务终止证据；两个 CAD 标签无需下载即可解锁。最终的 Python 验证器会检查目录哈希、受保护源更新拒绝、进程回收和失败/取消接受拒绝。CI 在一个新鲜的本地端口上使用一个确定性的模型测试样例。
 
-对于一个显式的实际模型运行，设置 `CAD_PAINT_REAL_MODEL=1` 用于手轮测试样例；其本地观察代理会将一个请求转发到所选的 `OLLAMA_HOST`。`CAD_PAINT_REAL_KRITA=1` 也会请求原生文档启动。保持生成的请求和交换日志私密。完整原生读回：
+实际模型验收设置 `CAD_PAINT_REAL_CODEX=1`，两种图纸的补全、历史查证与混合任务均使用已登录 Codex。`CAD_PAINT_REAL_KRITA=1` 另行请求打开原生文档。请求和模型记录保留在本地。完整原生读回：
 
 ```sh
 python3 -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTPUT" \
@@ -119,7 +119,13 @@ python3 -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTP
 
 历史查证可在界面取消。取消会撤销工具读取、终止 CLI，并在本地进程关闭后结束本次保存；迟到结果不能进入渲染。私有 `material-codex/receipt.json` 记录提交与 CLI 完成状态，`native-events.jsonl` 私有保存 Codex 原生事件供检查，不另建应用自己的记录格式；只有提交而无完成记录时须检查，不自动重放。一个保存目录只能提交一次。原生渲染结算和已验收产物保管仍由宿主负责。
 
-旧的 `an-agent-host model` 请求/采纳双阶段驱动、模型配置和历史查证 Ollama 代理已删除，不保留回退通路。Ollama 仍可用于“补全缺失材质”这一独立任务；已提供材质或复用已验收材质时无需启动 Ollama。
+缺失材质补全与历史查证共用 `codex.ts` 中唯一的有限 CLI 入口，使用相同版本、权限、时限、取消和原生事件记录。补全阶段不提供 MCP 工具。领域包的只读 `instructions`、`materialSchema`、`planKit` 继续承载领域知识与验收规则；Codex 只接收说明、绘制要求、已有材质与缺失部件标签，不接收几何、路径、文档世代或原生产物。界面会说明这项披露。
+
+Codex 只能返回缺失部件的 JSON 数据；额外部件、非法颜色及越界或非有限数值会在生成 kit、渲染请求或原生实例前被拒绝。已有和已复用材质不会被覆盖。混合任务会把已核准的历史材质作为已有事实提供给补全，并在 kit 中原样保留。
+
+取消按钮覆盖两个材质阶段。准备阶段在写入 kit 与请求前检查取消；交给原生渲染后隐藏材质取消按钮，结算继续由宿主负责。`material-completion-codex/` 与 `material-codex/` 使用同一种私有记录格式。请求中的 `codex-default` 表示使用 Codex 默认模型选择。
+
+旧的 Ollama HTTP 客户端、模型/端点设置、观察代理，以及之前的宿主请求/采纳驱动均已删除，不保留回退提供方。已提供全部材质或仅精确复用时仍不调用模型。
 
 配置宿主、运行时和匹配的读取器后，每次验收使用新的 `CAD_PAINT_TEST_OUTPUT`：
 
@@ -130,6 +136,6 @@ CAD_PAINT_FIXTURE=handwheel CAD_PAINT_REAL_CODEX=1 \
   node --test examples/cad-paint/dist/managed.test.js
 ```
 
-`test:codex` 使用真实固定版本的 Codex 二进制和本地 Responses 协议样本，无需登录；它验证 MCP 发现、采纳、越权拒绝与禁止重放。CI 对两种图纸和取消流程使用相同的真实二进制及协议样本，样本输出不代表模型质量。`CAD_PAINT_REAL_CODEX=1` 才使用已登录的提供方完成历史查证；`CAD_PAINT_REAL_MODEL=1` 独立控制缺失材质的真实 Ollama 调用。真实验收须区分这些设置，并另外核对 PNG/ORA 清单与实际 Krita 导入。
+`test:codex` 使用真实固定版本的 Codex 和无凭证本地 Responses 样本，验证历史读取、采纳、越权拒绝、禁止重放、多部件补全、非法提案拒绝和迟到结果取消。CI 使用相同样本验证两种图纸，样本不代表模型质量；`CAD_PAINT_REAL_CODEX=1` 才在两个材质阶段使用已登录提供方。实际验收另行核对 PNG/ORA 清单与 Krita 导入。
 
-已验证范围与限制见[验收记录](examples/cad-paint/qualification-codex-material.md)。
+当前覆盖见[补全验收记录](examples/cad-paint/qualification-codex-completion.md)；[历史查证验收记录](examples/cad-paint/qualification-codex-material.md) 保留前一阶段的实证。

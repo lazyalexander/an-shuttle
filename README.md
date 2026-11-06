@@ -24,7 +24,7 @@ npm run studio
 
 Visit http://127.0.0.1:4183. Adjust the jaw opening, camera and finishes. Click **保存并绘制**. The submitting CAD window freezes immediately. The server locks the saved revision before awaiting any work, broadcasts the lock to every connected CAD window and rejects concurrent or stale saves. A disconnected window stays disabled until it reconnects. The studio publishes both accepted artifacts on success and releases the CAD lock before waiting for Krita to open. A confirmed terminal failure releases the lock with no download. If the waiting CLI loses its result, the studio keeps the lock and checks the same supervised run for termination.
 
-The spool uses the provided camera and light. Omit the camera for the default three-quarter view, or omit the light for a random azimuth. Assign all four finishes to render offline. To ask a model for missing finishes, start local Ollama with a downloaded model that supports structured JSON. Set `OLLAMA_MODEL` to its name (default `qwen3:8b`) and optionally `OLLAMA_HOST` to its base URL (default `http://127.0.0.1:11434`). Model failures are reported in the CAD interface.
+The spool uses the provided camera and light. Omit the camera for the default three-quarter view, or omit the light for a random azimuth. Supplying all finishes renders offline. Missing finishes use the same qualified Codex CLI as historical verification: install `@openai/codex@0.166.0` and sign in with `codex login`. Select a reviewed executable with `CAD_MATERIAL_CODEX_BIN` and an available model with `CAD_MATERIAL_CODEX_MODEL`. No local model server, downloaded weights or Ollama configuration are needed. Model failures fail the save.
 
 Mitsuba path traces the saved geometry on the CPU. A separate visibility pass assigns visible pixels to the base, hardware, fixed jaw and moving jaw. Every delivery checks that the four layers composite byte-for-byte to the transparent PNG. The standalone ORA contains the resolved scene recipe. For finer editing, set `CUT_SPOOL_BIN` to a local cutting-spool executable before starting the studio. **送交切割 spool** passes the absolute ORA path as one argument. Exit zero acknowledges delivery. Handoff is optional and CAD stays editable while the cutter runs. Each save gets its own folder under `paintings/`. Shuttle requests that local Krita open the document and also exposes a download. Set `KRITA_BIN` to select the local painting app.
 
@@ -107,9 +107,9 @@ unlock with no download. The final Python verifier checks catalog hashes,
 protected-source update refusals, process reaping and failed/cancelled acceptance
 refusals. CI uses a deterministic model fixture on a fresh local port.
 
-For an explicit real-model run, set `CAD_PAINT_REAL_MODEL=1` for the handwheel
-fixture; its local observation proxy forwards one request to the selected
-`OLLAMA_HOST`. `CAD_PAINT_REAL_KRITA=1` also requests the native document launch.
+For an explicit real-model run, set `CAD_PAINT_REAL_CODEX=1`. It uses the
+signed-in Codex provider for completion, history and mixed tasks in both CAD
+fixtures. `CAD_PAINT_REAL_KRITA=1` also requests native document launch.
 Keep generated requests and exchange logs private. Complete native readback with:
 
 ```sh
@@ -170,11 +170,33 @@ without completion requires inspection,
 never automatic replay. Each save folder can be submitted once. Native render
 settlement and accepted product custody remain host-owned.
 
-The old `an-agent-host model` request/adopt driver, model profiles and
-historical Ollama proxy are removed. Historical verification has no fallback
-route or provider switch. Ollama remains optional for the separate task of
-inventing missing finishes; supplying all finishes or reusing accepted ones
-needs no Ollama server.
+### Complete missing materials with the same Codex harness
+
+Both material tasks share `codex.ts`, one finite official CLI entry with the
+same pinned version, permissions, deadline, cancellation and native-event
+recording. Completion has no MCP tool. The spool's immutable `instructions`,
+`materialSchema` and `planKit` still own domain knowledge and validation.
+Only the description, operator direction, supplied material metadata and
+missing-part labels reach Codex. Geometry, paths, epochs and native artifacts
+stay local. The UI states this disclosure.
+
+Codex returns JSON only for missing parts. The domain validator rejects extra
+parts, invalid colors and non-finite/out-of-range material values before a kit,
+render request or native instance exists. Supplied and reused materials cannot
+be overwritten. For mixed history/completion saves, the approved historical
+material is included as supplied context and retained verbatim in the kit.
+
+The cancellation button covers both material stages. Preparation checks the
+same abort signal before publishing the kit/request. Once preparation hands
+off to native rendering, the material button disappears and host supervision
+owns settlement. `material-completion-codex/` retains the same private receipt
+and native event format as `material-codex/`. `codex-default` in the request's
+model field denotes a request using Codex's default model selector.
+
+The old Ollama HTTP client, endpoint/model settings and observation proxy are
+removed, as is the earlier host-model request/adopt driver. Neither material
+task has a fallback provider. Supplied-only and exact-reuse saves still invoke
+no model.
 
 With the managed host, runtime and matching reader configured, use a fresh
 `CAD_PAINT_TEST_OUTPUT` directory for each acceptance run:
@@ -188,12 +210,13 @@ CAD_PAINT_FIXTURE=handwheel CAD_PAINT_REAL_CODEX=1 \
 
 `test:codex` runs the actual pinned binary against a local Responses protocol
 fixture, without credentials. It checks MCP discovery, adoption, foreign-revision
-refusal and no replay. Managed CI uses the same real binary and protocol
+refusal, no replay, multi-part completion, invalid proposal refusal and browser
+cancellation with late data. Managed CI uses the same real binary and protocol
 fixture for both CAD drawings and cancellation; fixture output is not evidence
-of model quality. `CAD_PAINT_REAL_CODEX=1` uses the signed-in provider for the
-history task. `CAD_PAINT_REAL_MODEL=1` separately enables live Ollama for
-missing finishes. Real acceptance must distinguish those settings and verify
-the accepted PNG/ORA inventory and actual Krita import separately.
+of model quality. `CAD_PAINT_REAL_CODEX=1` uses the signed-in provider for both material tasks.
+Real acceptance must distinguish it from the protocol fixture and verify the
+accepted PNG/ORA inventory and actual Krita import separately.
 
-See the [qualification record](examples/cad-paint/qualification-codex-material.md)
-for verified coverage and its limits.
+See the [completion qualification](examples/cad-paint/qualification-codex-completion.md)
+for current coverage. The [history qualification](examples/cad-paint/qualification-codex-material.md)
+records the earlier migration stage.

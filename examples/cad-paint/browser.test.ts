@@ -15,7 +15,8 @@ test('saving freezes every CAD control across tabs, including a newly opened vie
   const held=new Promise<void>(resolve=>{fail=resolve;});
   let jobs=0, opens=0;
   const deliveries:string[]=[];
-  const server=studio(0,{output,render:async(_scene,_revision,folder)=>{
+  const server=studio(0,{output,render:async(_scene,_revision,folder,_drawing,_epoch,_direction,_waiting,_reused,_signal,materialReady)=>{
+    materialReady?.();
     if (++jobs===1) {await held;throw Error('test render failed');}
     return join(folder,'painting.ora');
   },open:async()=>{opens++;},cut:async file=>{deliveries.push(file);}});
@@ -42,6 +43,9 @@ test('saving freezes every CAD control across tabs, including a newly opened vie
       await page.getByText(/CAD 已锁定 · 正在绘制/).waitFor();
       assert.equal(await page.locator('input:enabled,select:enabled,button:enabled').count(),0);
     }
+    const nativeState=await (await a.request.get(url+'/state')).json();
+    assert.equal(nativeState.canCancelLookup,false);
+    assert.equal((await b.request.post(url+'/cancel-material',{data:nativeState,headers:{Origin:url}})).status(),409);
     const post=(data:unknown)=>b.request.post(url+'/save',{data,headers:{Origin:url}});
     assert.equal((await post({...original,revision:1})).status(),409);
     fail();

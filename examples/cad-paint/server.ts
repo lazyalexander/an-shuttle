@@ -21,7 +21,7 @@ import {verifyMaterial} from './verify-material.js';
 export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model,readMaterial=readPreviousMaterial,materialTurn=codexMaterialTurn,authorizeMaterial=authorizeMaterialDisclosure}={}) {
   const referencePart=drawing.id==='handwheel' ? 'grip' : drawing.id==='vise' ? 'movingJaw' : null;
   const materialReader=(render===paint || readMaterial!==readPreviousMaterial) && referencePart ? process.env.CAD_MATERIAL_READER : undefined;
-  let pendingLookup:AbortController|undefined;
+  let pendingMaterial:AbortController|undefined;
   let lastAccepted:{folder:string;revision:number}|undefined;
   const epoch=randomUUID();
   let revision=0, locked=false;
@@ -31,7 +31,7 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
   let paintingFile: string|null = null;
   let cutStatus: 'ready'|'sending'|'sent' = 'ready';
   const clients=new Set<ServerResponse>();
-  const state=()=>({epoch,revision,locked,drawingId:drawing.id,scene,direction,message,artifact,canCut:!!cut,canCancelLookup:!!pendingLookup && !pendingLookup.signal.aborted,cutStatus,materialReference:materialReader && lastAccepted ? {part:referencePart,revision:lastAccepted.revision} : null,gripReference:materialReader && referencePart==='grip' ? lastAccepted?.revision ?? null : null});
+  const state=()=>({epoch,revision,locked,drawingId:drawing.id,scene,direction,message,artifact,canCut:!!cut,canCancelLookup:!!pendingMaterial && !pendingMaterial.signal.aborted,cutStatus,materialReference:materialReader && lastAccepted ? {part:referencePart,revision:lastAccepted.revision} : null,gripReference:materialReader && referencePart==='grip' ? lastAccepted?.revision ?? null : null});
   function publish() {
     for(const client of clients) client.write('data: '+JSON.stringify(state())+'\n\n');
   }
@@ -62,9 +62,9 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
       for await(const chunk of req) { body+=chunk; if(Buffer.byteLength(body)>8192) return send(413,'text/plain','Scene too large'); }
       const input=JSON.parse(body);
       if (url === '/cancel-material') {
-        if (input.epoch!==epoch || input.revision!==revision || !pendingLookup || pendingLookup.signal.aborted)
-          return send(409,'text/plain','No matching material lookup');
-        pendingLookup.abort(new Error('材质查证已取消'));
+        if (input.epoch!==epoch || input.revision!==revision || !pendingMaterial || pendingMaterial.signal.aborted)
+          return send(409,'text/plain','No matching material task');
+        pendingMaterial.abort(new Error('材质处理已取消'));
         publish();
         return send(202,'text/plain','Cancellation requested');
       }
@@ -98,26 +98,26 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
       const nextDirection=input.direction ?? '';
       if(typeof nextDirection!=='string' || nextDirection.length>500) return send(400,'text/plain','Invalid painting direction');
       direction=nextDirection;
-      const lookup=selection ? new AbortController() : undefined;
-      pendingLookup=lookup;
+      const needsCompletion=Object.keys(drawing.parts).some(part=>!frozen.materials[part] && !(previous && part===referencePart));
+      const lookup=selection || needsCompletion ? new AbortController() : undefined;
+      pendingMaterial=lookup;
       locked=true; scene=frozen; revision++; artifact=null; paintingFile=null; cutStatus='ready'; message='CAD 已锁定 · 正在绘制';publish();
       try {
         await mkdir(output,{recursive:true});
         const folder=await mkdtemp(join(output,'drawing-'));
         const reused=previous && materialReader && referencePart
           ? await (async()=>{
-            const read=()=>readMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart,!!lookup,lookup?.signal);
-            if (!lookup) return read();
+            const read=()=>readMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart,!!selection,lookup?.signal);
+            if (!selection) return read();
             const scope={document:drawing.id,part:referencePart,revision:previous.revision};
-            await authorizeMaterial(materialReader,scope.document,scope.part,lookup.signal);
-            return verifyMaterial(scope,read,lookup.signal,materialTurn(folder));
+            await authorizeMaterial(materialReader,scope.document,scope.part,lookup!.signal);
+            return verifyMaterial(scope,read,lookup!.signal,materialTurn(folder));
           })()
           : undefined;
         lookup?.signal.throwIfAborted();
-        if (lookup) {pendingLookup=undefined;publish();}
         const file=await render(frozen,revision,folder,drawing,epoch,direction,()=>{
           message='等待宿主确认绘制终止 · CAD 保持锁定';publish();
-        },reused);
+        },reused,lookup?.signal,()=>{pendingMaterial=undefined;publish();});
         lastAccepted={folder,revision};
         paintingFile=file;
         artifact='/assets/'+basename(folder);
@@ -127,7 +127,7 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
           if (paintingFile===file) {message='素材已生成，已请求 Krita 打开';publish();}
         },()=>{});
       } catch(error) {message='绘制失败 · '+(error instanceof Error?error.message:String(error)).slice(0,220);return send(500,'text/plain',message);}
-      finally {pendingLookup=undefined;locked=false;publish();}
+      finally {pendingMaterial=undefined;locked=false;publish();}
       send(200,'application/json',JSON.stringify(state()));
     } catch(error) {send(400,'text/plain',String(error).slice(0,300));}
   });
