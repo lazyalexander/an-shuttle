@@ -12,6 +12,8 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {benchVise, type Model} from '@an-shuttle/cad/drawing.js';
 import {openInKrita} from '@an-shuttle/krita/document.js';
 import {loadDrawing,studio} from './server.js';
+import {codexMaterialTurn} from './codex-material.js';
+import {codexFixture} from './codex-fixture.test-helper.js';
 
 test('a browser save delivers only the native host’s accepted products', {timeout:1_350_000}, async t => {
   const root = await realpath(process.env.CAD_PAINT_TEST_OUTPUT!);
@@ -19,8 +21,15 @@ test('a browser save delivers only the native host’s accepted products', {time
   const fixture=process.env.CAD_PAINT_FIXTURE;
   assert.ok(['vise','handwheel','incomplete','cancelled'].includes(fixture!));
   const liveModel=process.env.CAD_PAINT_REAL_MODEL==='1';
-  const hostAgent=true; // Material decisions always use the shared approved host route.
-  const liveHistory=hostAgent && liveModel && fixture==='handwheel';
+  const liveHistory=fixture==='handwheel';
+  const realCodex=process.env.CAD_PAINT_REAL_CODEX==='1';
+  const codexPeer=realCodex ? undefined : await codexFixture(root,process.env.CAD_MATERIAL_CODEX_BIN ?? 'codex');
+  const previousBinary=process.env.CAD_MATERIAL_CODEX_BIN;
+  if (codexPeer) process.env.CAD_MATERIAL_CODEX_BIN=codexPeer.binary;
+  t.after(async()=>{
+    if(previousBinary===undefined) delete process.env.CAD_MATERIAL_CODEX_BIN; else process.env.CAD_MATERIAL_CODEX_BIN=previousBinary;
+    await codexPeer?.close();
+  });
   const cancelOnly=liveHistory && process.env.CAD_PAINT_CANCEL_ONLY==='1';
   const direct=process.env.CAD_PAINT_DIRECT==='1';
   const upstream=process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
@@ -40,44 +49,7 @@ test('a browser save delivers only the native host’s accepted products', {time
       let message = '';
       for await (const chunk of request) message += chunk;
       const input=JSON.parse(message);
-      if (request.url==='/v1/chat/completions') {
-        assert.equal(hostAgent,true);
-        const prefix='[external-context-untrusted] ';
-        const line=input.messages.find((entry:{role:string})=>entry.role==='user')?.content
-          .split('\n').find((entry:string)=>entry.startsWith(prefix));
-        assert.ok(line,'Host must supply one tagged context packet');
-        const packet=JSON.parse(line.slice(prefix.length));
-        const data=JSON.parse(packet.text);
-        const action=packet.source==='cad:material:request';
-        assert.equal(packet.source,action ? 'cad:material:request' : 'cad:material:adopt');
-        if (action) lookups++; else proofs++;
-        const answer=action ? {action:'read_approved_material',...data.permitted}
-          : {adopt:true,evidence_id:data.evidence_id};
-        const holding=action && holdRequest;
-        if (holding) lookupRequested();
-        const result=liveModel
-          ? await fetch(new URL(request.url,upstream),{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({...input,reasoning_effort:'none',temperature:0,response_format:{type:'json_object'}}),
-            signal:AbortSignal.timeout(holding ? 600_000 : 300_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
-          : JSON.stringify({choices:[{message:{content:JSON.stringify(answer)}}],
-            usage:{prompt_tokens:10,completion_tokens:5}});
-        if (liveModel) {
-          const modelReply=JSON.parse(result);
-          console.log(JSON.stringify({stage:packet.source,finishReason:modelReply.choices[0].finish_reason,
-            usage:modelReply.usage,reply:modelReply.choices[0].message.content}));
-        }
-        if (holding) {
-          const reply=JSON.parse(JSON.parse(result).choices[0].message.content);
-          assert.deepEqual(reply,answer,'The delayed real model reply must be a valid lookup proposal');
-          await delayed;
-          response.end(result);
-          proxyFinished(true);
-          return;
-        }
-        response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
-        return;
-      }
-      assert.notEqual(request.url,'/api/chat','Historical material must not bypass the approved host model route');
+      assert.equal(request.url,'/api/generate','Historical verification must use Codex MCP');
       materials.push(input.format.required);
       const result=liveModel
         ? await fetch(new URL('/api/generate',upstream),{method:'POST',headers:{'Content-Type':'application/json'},
@@ -108,7 +80,19 @@ test('a browser save delivers only the native host’s accepted products', {time
     if (drawing.id!==fixture) continue;
     await t.test(drawing.id,async () => {
       const output = join(root,drawing.id), opened: string[] = [];
-      const server = studio(0,{drawing,output,open:async file => {
+      const server = studio(0,{drawing,output,
+        materialTurn:folder=>async(scope,read,signal)=>{
+          lookups++;
+          return codexMaterialTurn(folder)(scope,async args=>{
+            if (holdRequest) {
+              lookupRequested();
+              await delayed;
+              proxyFinished(true);
+              signal.throwIfAborted();
+            }
+            const proof=await read(args);proofs++;return proof;
+          },signal);
+        },open:async file => {
         opened.push(file);
         if(process.env.CAD_PAINT_REAL_KRITA==='1') await openInKrita(file);
       }});
@@ -275,12 +259,10 @@ test('a browser save delivers only the native host’s accepted products', {time
             assert.equal(materials.length-generated,mode==='complement' && drawing===benchVise ? 1 : 0);
             assert.equal(lookups,mode==='history' ? 1 : 0);
             assert.equal(proofs,lookups);
-            if (hostAgent && mode==='history') {
+            if (mode==='history') {
               const folder=join(output,after.artifact.split('/').at(-1));
-              for (const stage of ['request','adopt']) {
-                const receipt=JSON.parse(await readFile(join(folder,stage+'-agent','receipt.json'),'utf8'));
-                assert.equal(receipt.status,'succeeded');
-              }
+              const receipt=JSON.parse(await readFile(join(folder,'material-codex','receipt.json'),'utf8'));
+              assert.equal(receipt.status,'completed');
             }
             const expired=await post(origin,current);
             assert.equal(expired.status,409);
@@ -296,14 +278,14 @@ test('a browser save delivers only the native host’s accepted products', {time
             const cancelledSave=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:630_000});
             void cancelledSave.catch(()=>{});
             await first.locator('#save').click();
-            await Promise.race([requested,delay(310_000,undefined,{ref:false}).then(()=>{throw Error('The host did not request a lookup decision');})]);
+            await Promise.race([requested,delay(310_000,undefined,{ref:false}).then(()=>{throw Error('Codex did not invoke its MCP read tool');})]);
             const cancellation=first.waitForResponse(r=>r.url()===origin+'/cancel-material');
             await first.locator('#cancelMaterial').click();
             assert.equal((await cancellation).status(),202);
             releaseRequest();
             assert.equal((await cancelledSave).status(),500);
-            assert.equal(await sent,true,'The real Ollama reply must arrive after cancellation');
-            assert.equal(proofs,priorProofs,'The cancelled proposal must not reach evidence adoption');
+            assert.equal(await sent,true,'The pending MCP read must settle after cancellation');
+            assert.equal(proofs,priorProofs,'The cancelled MCP read must not issue material evidence');
             const settled=await readState();
             assert.equal(settled.artifact,null);
             assert.equal(settled.locked,false);
@@ -311,9 +293,9 @@ test('a browser save delivers only the native host’s accepted products', {time
             const created=(await readdir(output)).filter(entry=>!priorFolders.has(entry));
             assert.equal(created.length,1);
             const files=await readdir(join(output,created[0]));
-            for (const product of ['painting.ora','beauty.png','accepted.json','instance','adopt-agent'])
+            for (const product of ['painting.ora','beauty.png','accepted.json','instance','decision.json'])
               assert.ok(!files.includes(product),product+' was created after cancelling lookup');
-            console.log('Live Ollama lookup proposal arrived after cancellation; no adoption or render started');
+            console.log('Codex MCP read cancelled; no evidence adoption or render started');
           }
           await writeFile(join(root,drawing.id+'-lock-timings.json'),JSON.stringify(locks));
         }
@@ -321,13 +303,8 @@ test('a browser save delivers only the native host’s accepted products', {time
         const route = await fetch(origin+'/state').then(r => r.json()).catch(() => null);
         console.error('CAD failure evidence',drawing.id,route?.revision,route?.locked,route?.message);
         for (const attempt of await readdir(output).catch(() => [])) {
-          for (const stage of ['request','adopt']) {
-            const raw=await readFile(join(output,attempt,stage+'-agent','receipt.json'),'utf8').catch(()=>null);
-            if (raw) {
-              const receipt=JSON.parse(raw);
-              console.error('material receipt',stage,receipt.status,receipt.model_attempt);
-            }
-          }
+          const raw=await readFile(join(output,attempt,'material-codex','receipt.json'),'utf8').catch(()=>null);
+          if (raw) console.error('Codex material receipt',JSON.parse(raw).status);
           const result = await readFile(join(output,attempt,'instance/runs/paint/result.json'),'utf8').catch(() => null);
           if (result) {
             const record=JSON.parse(result);

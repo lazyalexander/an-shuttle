@@ -22,7 +22,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: '0'
       LOOM_REV: 9089b0283cc9077f51447e38b32f553049948d98
-      MATERIAL_READER_REV: f307fb15604fd8219f942b2f8491c70b67fe96b4
+      MATERIAL_READER_REV: 8c87a0ce0a34e1ed5bdb1971d923f64357d17c00
       HOST_REV: 7c5fa1f2c70d36fbdd8b4054ca9384dfa9174f75
     steps:
       - uses: actions/checkout@v4
@@ -89,38 +89,20 @@ jobs:
           ref: ${{ env.MATERIAL_READER_REV }}
           path: integrations/material-evidence
           persist-credentials: false
+      - name: Install qualified Codex harness and check scoped MCP
+        run: |
+          npm install -g @openai/codex@0.166.0
+          npm run test:codex
       - name: Browser save (vise)
         timeout-minutes: 4
         env:
           CAD_PAINT_FIXTURE: vise
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
-      # Hosted macOS has no Metal GPU. Keep this real-model cancellation probe
-      # CPU-sized; 8B exhausted the host call deadline before producing a reply.
-      - name: Start local Ollama with qwen3:0.6b
-        timeout-minutes: 14
-        run: |
-          brew install ollama
-          export OLLAMA_HOST=127.0.0.1:11434
-          OLLAMA_CONTEXT_LENGTH=2048 OLLAMA_NUM_PARALLEL=1 OLLAMA_MAX_LOADED_MODELS=1 OLLAMA_KEEP_ALIVE=20m \
-            ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
-          for attempt in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:11434/api/version; then break; fi
-            sleep 1
-          done
-          ollama pull qwen3:0.6b
-          ollama list
-          ollama list | awk '$1 == "qwen3:0.6b" && $2 == "7df6b6e09427" {found=1} END {exit !found}'
-          curl -fsS --max-time 420 http://127.0.0.1:11434/api/generate \
-            -H 'Content-Type: application/json' \
-            -d '{"model":"qwen3:0.6b","prompt":"","stream":false,"keep_alive":"20m"}'
-          ollama ps
-      - name: Browser save (handwheel, live Ollama)
-        timeout-minutes: 24
+      - name: Browser save (handwheel, Codex MCP)
+        timeout-minutes: 8
         env:
           CAD_PAINT_FIXTURE: handwheel
-          CAD_PAINT_REAL_MODEL: 1
-          OLLAMA_MODEL: qwen3:0.6b
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
       - name: Browser save (incomplete)
@@ -136,7 +118,6 @@ jobs:
       - name: Inspect original fixture attempts on failure
         if: failure()
         run: |
-          if [ -f "$RUNNER_TEMP/ollama.log" ]; then tail -50 "$RUNNER_TEMP/ollama.log"; fi
           for instance in "$CAD_PAINT_TEST_OUTPUT"/*/drawing-*/instance; do
             [ -d "$instance" ] || continue
             an-agent-host spool-status "$instance" paint || true

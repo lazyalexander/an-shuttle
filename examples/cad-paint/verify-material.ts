@@ -2,33 +2,35 @@ import {isDeepStrictEqual} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import type {MaterialEvidence} from './host.js';
 
-type Scope={document:string;part:string;revision:number};
-type Proof=Scope & {evidence_id:string;artifact_revision:string;material:MaterialEvidence['material']};
-type Ask=(stage:'request'|'adopt', data:object, signal:AbortSignal)=>Promise<unknown>;
+export type MaterialScope={document:string;part:string;revision:number};
+export type MaterialProof=MaterialScope & {evidence_id:string;artifact_revision:string;material:MaterialEvidence['material']};
+export type MaterialTurn=(scope:MaterialScope,read:(args:unknown)=>Promise<MaterialProof>,signal:AbortSignal)=>Promise<unknown>;
 
-export async function verifyMaterialWithHost(scope:Scope, read:()=>Promise<MaterialEvidence>,
-                                             signal:AbortSignal, ask:Ask) {
+// The harness owns planning and tool use. The application owns authority and adoption.
+export async function verifyMaterial(scope:MaterialScope,read:()=>Promise<MaterialEvidence>,
+                                     signal:AbortSignal,turn:MaterialTurn) {
   signal.throwIfAborted();
-  const action=await ask('request',{intent:'Reuse the last approved material',permitted:scope},signal);
-  if (!isDeepStrictEqual(action,{action:'read_approved_material',...scope}))
-    throw Error('Host material lookup was declined or exceeded the approved scope');
-  return adoptMaterial(scope,read,signal,proof=>ask('adopt',proof,signal));
-}
-
-async function adoptMaterial(scope:Scope, read:()=>Promise<MaterialEvidence>,
-                             signal:AbortSignal, decide:(proof:Proof)=>Promise<unknown>) {
-  signal.throwIfAborted();
-  const evidence=await read();
-  signal.throwIfAborted();
-  if (evidence.source.document!==scope.document || evidence.part!==scope.part || evidence.source.revision!==scope.revision)
-    throw Error('Material evidence does not match the approved scope');
-
-  // The source remains in this invocation. An ID from another save cannot resolve here.
+  scope=Object.freeze({...scope});
+  let called=false,failed=false,issued:MaterialEvidence|undefined;
   const evidenceId=randomUUID();
-  const proof={...scope,evidence_id:evidenceId,artifact_revision:evidence.artifact.revision,material:evidence.material};
-  const decision=await decide(proof);
+  const decision=await turn(scope,async args=>{
+    signal.throwIfAborted();
+    if (called || !isDeepStrictEqual(args,scope)) {
+      failed=true;
+      throw Error('Material lookup exceeded the approved scope or repeated a read');
+    }
+    called=true;
+    const evidence=await read().catch(error=>{failed=true;throw error;});
+    signal.throwIfAborted();
+    if (evidence.source.document!==scope.document || evidence.part!==scope.part || evidence.source.revision!==scope.revision) {
+      failed=true;
+      throw Error('Material evidence does not match the approved scope');
+    }
+    issued=evidence;
+    return {...scope,evidence_id:evidenceId,artifact_revision:evidence.artifact.revision,material:evidence.material};
+  },signal);
   signal.throwIfAborted();
-  if (!isDeepStrictEqual(decision,{adopt:true,evidence_id:evidenceId}))
-    throw Error('The model did not adopt the evidence issued for this lookup');
-  return evidence;
+  if (failed || !issued || !isDeepStrictEqual(decision,{adopt:true,evidence_id:evidenceId}))
+    throw Error('The harness did not adopt the evidence issued for this lookup');
+  return issued;
 }

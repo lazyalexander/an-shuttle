@@ -116,11 +116,12 @@ test('cancel a pending material lookup from the handwheel editor', {timeout:60_0
       artifact:{release:'a'.repeat(64),revision:'b'.repeat(64)},
       material:{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8},
     }),
-    askAgent:async(_folder,stage,data)=>{
-      if (stage==='request') return {action:'read_approved_material',...(data as {permitted:object}).permitted};
+    authorizeMaterial:async()=>{},
+    materialTurn:()=>async(scope,read)=>{
+      const proof=await read(scope);
       reached();
       await released;
-      return {adopt:true,evidence_id:(data as {evidence_id:string}).evidence_id};
+      return {adopt:true,evidence_id:proof.evidence_id};
     },
   });
   t.after(async()=>{
