@@ -164,7 +164,9 @@ The studio exposes cancellation while historical verification is pending. It
 revokes the MCP read, interrupts the CLI and waits for its local process to
 close before releasing the save. A late response cannot publish evidence or
 enter rendering. The private `material-codex/receipt.json` records submission
-and CLI completion; a submitted receipt without completion requires inspection,
+and CLI completion; `native-events.jsonl` retains Codex events privately for
+inspection, without an application-owned transcript format. A submitted receipt
+without completion requires inspection,
 never automatic replay. Each save folder can be submitted once. Native render
 settlement and accepted product custody remain host-owned.
 

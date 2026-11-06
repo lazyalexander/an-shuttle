@@ -8,15 +8,17 @@ import {join} from 'node:path';
 export async function codexFixture(folder:string,realBinary:string,mode:'adopt'|'outside-scope'='adopt') {
   let calls=0,reads=0,adoptions=0;
   const tools=new Set<string>();
+  const model={slug:'gpt-6-sol',display_name:'Fixture',description:'Protocol test only',
+    supported_reasoning_levels:[],shell_type:'unified_exec',visibility:'list',supported_in_api:true,
+    priority:0,upgrade:null,support_verbosity:false,default_verbosity:null,apply_patch_tool_type:null,
+    truncation_policy:{mode:'bytes',limit:10000},experimental_supported_tools:[],context_window:32000,
+    base_instructions:'Use the approved material tool.',tool_mode:'direct',multi_agent_version:'v2'};
+  const catalog=join(folder,'codex-fixture-models.json');
+  await writeFile(catalog,JSON.stringify({models:[model]}),{mode:0o600});
   const server=createServer(async(req,res)=>{
     try {
       if (req.headers.authorization) throw Error('The protocol fixture must not receive credentials');
       if (req.method==='GET' && req.url?.startsWith('/v1/models?')) {
-        const model={slug:'gpt-6-sol',display_name:'Fixture',description:'Protocol test only',
-          supported_reasoning_levels:[],shell_type:'disabled',visibility:'list',supported_in_api:true,
-          priority:0,upgrade:null,support_verbosity:false,default_verbosity:null,apply_patch_tool_type:null,
-          truncation_policy:{mode:'bytes',limit:10000},experimental_supported_tools:[],context_window:32000,
-          base_instructions:'Use the approved material tool.',tool_mode:'direct',multi_agent_version:'disabled'};
         res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({models:[model]}));return;
       }
       if (req.method!=='POST' || req.url!=='/v1/responses') throw Error('Unexpected protocol fixture route');
@@ -78,7 +80,7 @@ export async function codexFixture(folder:string,realBinary:string,mode:'adopt'|
   const quote=(value:string)=>"'"+value.replaceAll("'", "'\"'\"'")+"'";
   const provider='{name="fixture",base_url="http://127.0.0.1:'+address.port+'/v1",wire_api="responses",requires_openai_auth=false,request_max_retries=0,stream_max_retries=0}';
   await writeFile(binary,'#!/bin/sh\nexec '+quote(realBinary)+' -c '+quote('model_provider="material_fixture"')+
-    ' -c '+quote('model_providers.material_fixture='+provider)+' -c '+quote('model="gpt-6-sol"')+' "$@"\n',{mode:0o700});
+    ' -c '+quote('model_providers.material_fixture='+provider)+' -c '+quote('model="gpt-6-sol"')+' -c '+quote('model_catalog_json='+JSON.stringify(catalog))+' "$@"\n',{mode:0o700});
   return {binary,tools,get reads(){return reads;},get adoptions(){return adoptions;},
     close:()=>{server.closeAllConnections();return new Promise<void>(done=>server.close(()=>done()));}};
 }

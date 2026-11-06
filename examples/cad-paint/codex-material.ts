@@ -86,8 +86,10 @@ export function codexMaterialTurn(folder:string):MaterialTurn {
       const execution=execute(binary,args,{signal,encoding:'utf8',maxBuffer:2*1024*1024,timeout:180_000});
       const closed=new Promise<void>(done=>execution.child.once('close',()=>done()));
       execution.child.stdin?.end();
-      await execution.catch(async error=>{
-        await writeFile(join(job,'diagnostic.txt'),(String(error.stderr ?? '')+'\n'+String(error.stdout ?? '')+'\nExit: '+String(error.code)).replaceAll(token,'[redacted]'),{mode:0o600});
+      const nativeLog=(output:string)=>writeFile(join(job,'native-events.jsonl'),output.replaceAll(token,'[redacted]'),{mode:0o600,flag:'wx'});
+      await execution.then(({stdout})=>nativeLog(stdout),async error=>{
+        await nativeLog(String(error.stdout ?? ''));
+        await writeFile(join(job,'diagnostic.txt'),(String(error.stderr ?? '')+'\nExit: '+String(error.code)).replaceAll(token,'[redacted]'),{mode:0o600});
         throw Error('Codex historical material verification failed; inspect material-codex/diagnostic.txt');
       }).finally(()=>closed);
       signal.throwIfAborted();

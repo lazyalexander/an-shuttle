@@ -117,7 +117,7 @@ python3 -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTP
 
 在提交任何 Codex 任务前，匹配的 Loom 读取器须通过 `--check-delegation` 核准 `codex-selected-material`。读取器旁的 `delegation.json` 必须允许该模式。允许发送所选图纸、部件、已验收修订、产物修订和材质元数据，以及 Shuttle 新生成的本次证据编号。源文件路径、ORA、网格、其他部件、文档世代和原生记录均留在本地。界面会说明这项披露。仅限本地的声明会在 Codex 启动前拒绝；解析产物时还会再次核验声明。
 
-历史查证可在界面取消。取消会撤销工具读取、终止 CLI，并在本地进程关闭后结束本次保存；迟到结果不能进入渲染。私有 `material-codex/receipt.json` 记录提交与 CLI 完成状态；只有提交而无完成记录时须检查，不自动重放。一个保存目录只能提交一次。原生渲染结算和已验收产物保管仍由宿主负责。
+历史查证可在界面取消。取消会撤销工具读取、终止 CLI，并在本地进程关闭后结束本次保存；迟到结果不能进入渲染。私有 `material-codex/receipt.json` 记录提交与 CLI 完成状态，`native-events.jsonl` 私有保存 Codex 原生事件供检查，不另建应用自己的记录格式；只有提交而无完成记录时须检查，不自动重放。一个保存目录只能提交一次。原生渲染结算和已验收产物保管仍由宿主负责。
 
 旧的 `an-agent-host model` 请求/采纳双阶段驱动、模型配置和历史查证 Ollama 代理已删除，不保留回退通路。Ollama 仍可用于“补全缺失材质”这一独立任务；已提供材质或复用已验收材质时无需启动 Ollama。
 

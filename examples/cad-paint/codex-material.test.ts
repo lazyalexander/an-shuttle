@@ -40,6 +40,7 @@ test('real Codex performs scoped MCP adoption and fails closed on a foreign revi
         assert.ok(![...fixture.tools].some(name=>/exec_command|view_image|spawn_agent|apply_patch/.test(name)));
         const receipt=JSON.parse(await readFile(join(folder,'material-codex','receipt.json'),'utf8'));
         assert.equal(receipt.status,'completed');
+        assert.match(await readFile(join(folder,'material-codex','native-events.jsonl'),'utf8'),/"type":"thread.started"/);
       } finally {await fixture.close();}
     });
   }
