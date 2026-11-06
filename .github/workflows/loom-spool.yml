@@ -96,7 +96,9 @@ jobs:
           CAD_PAINT_FIXTURE: vise
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
-      - name: Start local Ollama with qwen3:8b
+      # Hosted macOS has no Metal GPU. Keep this real-model cancellation probe
+      # CPU-sized; 8B exhausted the host call deadline before producing a reply.
+      - name: Start local Ollama with qwen3:0.6b
         timeout-minutes: 14
         run: |
           brew install ollama
@@ -107,12 +109,12 @@ jobs:
             if curl -fsS http://127.0.0.1:11434/api/version; then break; fi
             sleep 1
           done
-          ollama pull qwen3:8b
+          ollama pull qwen3:0.6b
           ollama list
-          ollama list | awk '$1 == "qwen3:8b" && $2 == "500a1f067a9f" {found=1} END {exit !found}'
+          ollama list | awk '$1 == "qwen3:0.6b" && $2 == "7df6b6e09427" {found=1} END {exit !found}'
           curl -fsS --max-time 420 http://127.0.0.1:11434/api/generate \
             -H 'Content-Type: application/json' \
-            -d '{"model":"qwen3:8b","prompt":"","stream":false,"keep_alive":"20m"}'
+            -d '{"model":"qwen3:0.6b","prompt":"","stream":false,"keep_alive":"20m"}'
           ollama ps
       - name: Browser save (handwheel, live Ollama)
         timeout-minutes: 24
@@ -120,7 +122,7 @@ jobs:
           CAD_PAINT_FIXTURE: handwheel
           CAD_PAINT_REAL_MODEL: 1
           CAD_PAINT_CANCEL_ONLY: 1
-          OLLAMA_MODEL: qwen3:8b
+          OLLAMA_MODEL: qwen3:0.6b
           CAD_MATERIAL_HOST_AGENT: 1
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
