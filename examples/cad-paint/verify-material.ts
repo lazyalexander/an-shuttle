@@ -15,7 +15,7 @@ export async function verifyMaterial(scope:MaterialScope,read:()=>Promise<Materi
   const evidenceId=randomUUID();
   const decision=await turn(scope,async args=>{
     signal.throwIfAborted();
-    if (called || !isDeepStrictEqual(args,scope)) {
+    if (failed || called || !isDeepStrictEqual(args,scope)) {
       failed=true;
       throw Error('Material lookup exceeded the approved scope or repeated a read');
     }

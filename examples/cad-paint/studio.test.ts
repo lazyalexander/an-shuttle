@@ -166,6 +166,14 @@ test('a denied or repeated lookup cannot be repaired by returning a previously i
       }),/did not adopt/);
   }
   assert.equal(reads,2);
+  let deniedReads=0;
+  await assert.rejects(verifyMaterial(scope,async()=>{deniedReads++;return evidence;},new AbortController().signal,
+    async(permitted,read)=>{
+      await read({...permitted,revision:8}).catch(()=>{});
+      await read(permitted).catch(()=>{});
+      return {adopt:false,evidence_id:''};
+    }),/did not adopt/);
+  assert.equal(deniedReads,0,'An out-of-scope attempt revokes the remaining read grant');
 });
 
 test('save scopes the host material decision and blocks rendering after lookup cancellation', async t => {
