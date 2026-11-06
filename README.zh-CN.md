@@ -113,3 +113,8 @@ python3 -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTP
 
 选择显示的版本会直接读取已接受的 ORA。选择历史验证会要求本地 Ollama 请求一个已批准的记录
 并返回匹配的证据。适配器在读取前会检查文档、部件和版本，并在渲染前验证模型的证明。被拒绝或不可用的证明会导致保存失败。两种路径都会在新请求中记录源版本和精确的产物绑定。
+
+历史材质查证统一复用 `an-agent-host model` 的批准、超时、取消和调用记录，
+Shuttle 只校验本次文档、部件、版本和证据 ID，不再维护另一套 Ollama 工具循环。
+不再需要 `CAD_MATERIAL_HOST_AGENT` 开关。配置历史读取器时，应使用同一受审查
+版本目录中的 `delegation.json`。离线直接保存和显式读取已接受材料保持原有入口。

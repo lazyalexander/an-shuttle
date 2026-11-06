@@ -139,8 +139,12 @@ for this lookup and uses it for rendering only if the returned ID matches.
 A rejected or unavailable proof fails the save. Both paths record the source
 revision and exact artifact binding in the new request.
 
-Set `CAD_MATERIAL_HOST_AGENT=1` to route the historical decision through
-`an-agent-host model` with a loopback Ollama endpoint. Use the matching reviewed
+Historical verification always delegates model calls to `an-agent-host model`
+with a loopback Ollama endpoint. The bridge no longer maintains a second Ollama
+tool-call loop, timeout policy or provider response parser. The host owns explicit
+approval, cancellation, deadlines and model receipts; the bridge owns the exact
+material scope and task-local evidence adoption. The retired
+`CAD_MATERIAL_HOST_AGENT` switch is no longer needed. Use the matching reviewed
 Loom reader checkout with `delegation.json` alongside the reader. Opting in
 permits only the displayed drawing's approved part and the selected accepted
 revision. The host records each model decision under the current save folder.
@@ -157,7 +161,7 @@ for each run:
 
 ```sh
 npm run build
-CAD_PAINT_FIXTURE=handwheel CAD_MATERIAL_HOST_AGENT=1 \
+CAD_PAINT_FIXTURE=handwheel \
   node --test examples/cad-paint/dist/managed.test.js
 ```
 
