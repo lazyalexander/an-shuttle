@@ -234,6 +234,11 @@ test('save scopes the host material decision and blocks rendering after lookup c
   assert.equal(reads,1);
   mode='deny-disclosure';
   assert.equal((await save()).status,500);assert.equal(reads,1);assert.equal(rendered,2);
+  const localOnly=await state();
+  const mixedScene={...localOnly.scene,materials:{...localOnly.scene.materials}};
+  delete mixedScene.materials.bearing;
+  assert.equal((await post('/save',{...localOnly,scene:mixedScene,reuseMaterial:localOnly.materialReference.revision})).status,500);
+  assert.equal(reads,1);assert.equal(rendered,2);
   mode='cancel';
   const pending=save();
   await entered;

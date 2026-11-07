@@ -5,9 +5,11 @@ import {once} from 'node:events';
 import {writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 
-export async function codexFixture(folder:string,realBinary:string,mode:'adopt'|'outside-scope'='adopt') {
+export async function codexFixture(folder:string,realBinary:string,mode:'adopt'|'outside-scope'|'completion-extra'|'completion-invalid'='adopt',
+                                   onCompletion=async(_brief:unknown)=>{}) {
   let calls=0,reads=0,adoptions=0;
   const tools=new Set<string>();
+  const completions:{brief:any;proposal:unknown;tools:string[]}[]=[];
   const model={slug:'gpt-6-sol',display_name:'Fixture',description:'Protocol test only',
     supported_reasoning_levels:[],shell_type:'unified_exec',visibility:'list',supported_in_api:true,
     priority:0,upgrade:null,support_verbosity:false,default_verbosity:null,apply_patch_tool_type:null,
@@ -34,7 +36,23 @@ export async function codexFixture(folder:string,realBinary:string,mode:'adopt'|
       const output=data.input.findLast((item:any)=>item.type==='function_call_output');
       const id='fixture-'+calls;
       let item:object;
-      if (output) {
+      const text=data.input.flatMap((entry:any)=>entry.role==='user' ? entry.content.map((v:any)=>v.text ?? '') : []).join('');
+      const scopeMatch=text.match(/permitted scope is (\{[^}]+\})/);
+      if (!scopeMatch) {
+        const line=text.split('\n').find((line:string)=>line.startsWith('{"description":'));
+        if (!line) throw Error('Missing completion brief');
+        const brief=JSON.parse(line), parts=Object.keys(brief.missing);
+        const expected=data.text.format.schema.required;
+        if (JSON.stringify(expected)!==JSON.stringify(parts)) throw Error('Completion schema differs from missing parts');
+        const proposal:Record<string,unknown>=Object.fromEntries(parts.map(part=>[part,
+          {finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}]));
+        if (mode==='completion-extra') proposal.unapproved={finish:'other',color:'#ffffff',metallic:0,roughness:0.5};
+        if (mode==='completion-invalid') (proposal[parts[0]] as any).metallic=2;
+        completions.push({brief,proposal,tools:[...tools]});
+        await onCompletion(brief);
+        item={type:'message',role:'assistant',id:'completion-'+calls,
+          content:[{type:'output_text',text:JSON.stringify(proposal)}]};
+      } else if (output) {
         const evidence=(value:any):string|undefined=>{
           if (typeof value==='string') {try{return evidence(JSON.parse(value));}catch{return undefined;}}
           if (!value || typeof value!=='object') return undefined;
@@ -53,8 +71,7 @@ export async function codexFixture(folder:string,realBinary:string,mode:'adopt'|
         }
       } else {
         // Parse the final user prompt, which carries the bounded scope as data.
-        const text=data.input.flatMap((entry:any)=>entry.role==='user' ? entry.content.map((v:any)=>v.text ?? '') : []).join('');
-        const match=text.match(/permitted scope is (\{[^}]+\})/);
+        const match=scopeMatch;
         if (!match) throw Error('Missing permitted scope');
         const name=[...tools].find(name=>name.includes('read_approved_material'));
         if (!name) throw Error('Codex did not discover the approved MCP tool: '+[...tools].join(','));
@@ -81,6 +98,6 @@ export async function codexFixture(folder:string,realBinary:string,mode:'adopt'|
   const provider='{name="fixture",base_url="http://127.0.0.1:'+address.port+'/v1",wire_api="responses",requires_openai_auth=false,request_max_retries=0,stream_max_retries=0}';
   await writeFile(binary,'#!/bin/sh\nexec '+quote(realBinary)+' -c '+quote('model_provider="material_fixture"')+
     ' -c '+quote('model_providers.material_fixture='+provider)+' -c '+quote('model="gpt-6-sol"')+' -c '+quote('model_catalog_json='+JSON.stringify(catalog))+' "$@"\n',{mode:0o700});
-  return {binary,tools,get reads(){return reads;},get adoptions(){return adoptions;},
+  return {binary,tools,completions,get reads(){return reads;},get adoptions(){return adoptions;},
     close:()=>{server.closeAllConnections();return new Promise<void>(done=>server.close(()=>done()));}};
 }
