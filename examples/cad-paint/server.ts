@@ -14,10 +14,11 @@ import {defaultCamera} from '@an-shuttle/cad/scene.js';
 import {benchVise,parameterInput,saveDrawing,type Model,type MeshDrawing,type SavedDrawing} from '@an-shuttle/cad/drawing.js';
 import {openInKrita} from '@an-shuttle/krita/document.js';
 import {paint,paintStandalone} from './spool.js';
-import {askMaterialAgent,readPreviousMaterial} from './host.js';
-import {verifyMaterialWithHost} from './verify-material.js';
+import {authorizeMaterialDisclosure,readPreviousMaterial} from './host.js';
+import {codexMaterialTurn} from './codex-material.js';
+import {verifyMaterial} from './verify-material.js';
 
-export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model,readMaterial=readPreviousMaterial,askAgent=askMaterialAgent}={}) {
+export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model,readMaterial=readPreviousMaterial,materialTurn=codexMaterialTurn,authorizeMaterial=authorizeMaterialDisclosure}={}) {
   const referencePart=drawing.id==='handwheel' ? 'grip' : drawing.id==='vise' ? 'movingJaw' : null;
   const materialReader=(render===paint || readMaterial!==readPreviousMaterial) && referencePart ? process.env.CAD_MATERIAL_READER : undefined;
   let pendingLookup:AbortController|undefined;
@@ -105,10 +106,11 @@ export function studio(port=4183,{output=resolve('paintings'),render=paint,open=
         const folder=await mkdtemp(join(output,'drawing-'));
         const reused=previous && materialReader && referencePart
           ? await (async()=>{
-            const read=()=>readMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart,!!lookup);
+            const read=()=>readMaterial(materialReader,previous.folder,drawing.id,epoch,previous.revision,referencePart,!!lookup,lookup?.signal);
             if (!lookup) return read();
             const scope={document:drawing.id,part:referencePart,revision:previous.revision};
-            return verifyMaterialWithHost(scope,read,lookup.signal,(stage,data,signal)=>askAgent(folder,stage,data,signal));
+            await authorizeMaterial(materialReader,scope.document,scope.part,lookup.signal);
+            return verifyMaterial(scope,read,lookup.signal,materialTurn(folder));
           })()
           : undefined;
         lookup?.signal.throwIfAborted();

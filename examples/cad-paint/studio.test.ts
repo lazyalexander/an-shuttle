@@ -115,7 +115,7 @@ test('a pending Krita launch cannot hold editing or replace a later revision’s
 });
 
 test('material adoption resolves only the current host evidence and rejects late decisions', async t => {
-  const {verifyMaterialWithHost}=await import('./verify-material.js');
+  const {verifyMaterial}=await import('./verify-material.js');
   const scope={document:'handwheel',part:'grip',revision:7};
   const evidence={
     schema:'cad-material-evidence-v1' as const, part:scope.part,
@@ -125,19 +125,15 @@ test('material adoption resolves only the current host evidence and rejects late
   };
   const controller=new AbortController();
   let mode='adopt', issuedId='', reads=0, decisions=0;
-  const ask=async(stage:'request'|'adopt', data:object)=>{
-    if (stage==='request') {
-      const permitted=mode==='outside-scope' ? {...scope,revision:8} : scope;
-      return {action:'read_approved_material',...permitted};
-    }
+  const turn:import('./verify-material.js').MaterialTurn=async(permitted,read)=>{
+    const proof=await read(mode==='outside-scope' ? {...permitted,revision:8} : permitted);
     decisions++;
-    const {evidence_id:id}=data as {evidence_id:string};
-    if (mode==='adopt') issuedId=id;
+    if (mode==='adopt') issuedId=proof.evidence_id;
     if (mode==='cancelled') controller.abort(new Error('Lookup cancelled'));
     return {adopt:true,evidence_id:issuedId};
   };
-  const verify=(signal:AbortSignal=new AbortController().signal)=>verifyMaterialWithHost(scope,
-    async()=>{reads++;return evidence;},signal,ask);
+  const verify=(signal:AbortSignal=new AbortController().signal)=>verifyMaterial(scope,
+    async()=>{reads++;return evidence;},signal,turn);
 
   assert.equal(await verify(),evidence);
   mode='previous-id';
@@ -147,11 +143,37 @@ test('material adoption resolves only the current host evidence and rejects late
   assert.equal(reads,2);
   assert.equal(decisions,2);
   mode='wrong-source';
-  await assert.rejects(verifyMaterialWithHost(scope,
-    async()=>({...evidence,source:{...evidence.source,revision:8}}),new AbortController().signal,ask),/does not match the approved scope/);
+  await assert.rejects(verifyMaterial(scope,
+    async()=>({...evidence,source:{...evidence.source,revision:8}}),new AbortController().signal,turn),/does not match the approved scope/);
   assert.equal(decisions,2);
   mode='cancelled';
   await assert.rejects(verify(controller.signal),/Lookup cancelled/);
+});
+
+test('a denied or repeated lookup cannot be repaired by returning a previously issued ID',async()=>{
+  const {verifyMaterial}=await import('./verify-material.js');
+  const scope={document:'handwheel',part:'grip',revision:7};
+  const evidence={schema:'cad-material-evidence-v1' as const,part:'grip',
+    source:{document:'handwheel',epoch:'e',revision:7},artifact:{release:'a'.repeat(64),revision:'b'.repeat(64)},
+    material:{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}};
+  let reads=0;
+  for (const args of [scope,{...scope,part:'other'}]) {
+    await assert.rejects(verifyMaterial(scope,async()=>{reads++;return evidence;},new AbortController().signal,
+      async(permitted,read)=>{
+        const proof=await read(permitted);
+        await read(args).catch(()=>{});
+        return {adopt:true,evidence_id:proof.evidence_id};
+      }),/did not adopt/);
+  }
+  assert.equal(reads,2);
+  let deniedReads=0;
+  await assert.rejects(verifyMaterial(scope,async()=>{deniedReads++;return evidence;},new AbortController().signal,
+    async(permitted,read)=>{
+      await read({...permitted,revision:8}).catch(()=>{});
+      await read(permitted).catch(()=>{});
+      return {adopt:false,evidence_id:''};
+    }),/did not adopt/);
+  assert.equal(deniedReads,0,'An out-of-scope attempt revokes the remaining read grant');
 });
 
 test('save scopes the host material decision and blocks rendering after lookup cancellation', async t => {
@@ -182,14 +204,11 @@ test('save scopes the host material decision and blocks rendering after lookup c
       assert.equal(delegated,true);reads++;
       return evidenceFor(document,epoch,revision,part);
     },
-    askAgent:async(_folder,stage,data)=>{
-      if (stage==='request') {
-        const {permitted}=data as {permitted:{revision:number}};
-        return {action:'read_approved_material',...permitted,
-          revision:permitted.revision+(mode==='wrong-scope' ? 1 : 0)};
-      }
+    authorizeMaterial:async()=>{if(mode==='deny-disclosure') throw Error('Local-only declaration');},
+    materialTurn:()=>async(scope,read)=>{
+      const proof=await read({...scope,revision:scope.revision+(mode==='wrong-scope' ? 1 : 0)});
       if (mode==='cancel') {reachedDecision();await delayed;}
-      return {adopt:true,evidence_id:(data as {evidence_id:string}).evidence_id};
+      return {adopt:true,evidence_id:proof.evidence_id};
     },
   });
   t.after(async()=>{
@@ -213,6 +232,8 @@ test('save scopes the host material decision and blocks rendering after lookup c
   mode='wrong-scope';
   assert.equal((await save()).status,500);
   assert.equal(reads,1);
+  mode='deny-disclosure';
+  assert.equal((await save()).status,500);assert.equal(reads,1);assert.equal(rendered,2);
   mode='cancel';
   const pending=save();
   await entered;

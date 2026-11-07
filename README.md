@@ -131,40 +131,69 @@ For managed saves, set `CAD_MATERIAL_READER` to
 checkout. After a successful save, the editor offers the handwheel grip
 or the vise moving jaw from the last accepted revision.
 
-Selecting the displayed revision reads the accepted ORA directly. Selecting
-historical verification asks local Ollama to request that one approved record
-and return an adoption decision with its evidence ID. The adapter checks the
-document, part and revision before reading. It keeps the original record
-for this lookup and uses it for rendering only if the returned ID matches.
-A rejected or unavailable proof fails the save. Both paths record the source
-revision and exact artifact binding in the new request.
+Selecting the displayed revision reads the accepted ORA directly. Historical
+verification instead delegates the agent process to **Codex CLI 0.166.0** with
+one scoped MCP read tool. Codex plans the read and returns a structured adoption
+decision. Shuttle checks the drawing, part, exact revision and invocation-local
+evidence ID, then passes the original host evidence to rendering. A declined,
+foreign, repeated or cancelled lookup cannot start a render.
 
-Historical verification always delegates model calls to `an-agent-host model`
-with a loopback Ollama endpoint. The bridge no longer maintains a second Ollama
-tool-call loop, timeout policy or provider response parser. The host owns explicit
-approval, cancellation, deadlines and model receipts; the bridge owns the exact
-material scope and task-local evidence adoption. The retired
-`CAD_MATERIAL_HOST_AGENT` switch is no longer needed. Use the matching reviewed
-Loom reader checkout with `delegation.json` alongside the reader. Opting in
-permits only the displayed drawing's approved part and the selected accepted
-revision. The host records each model decision under the current save folder.
-The model-facing packet excludes the ORA bytes and filesystem paths.
+Install the qualified CLI with `npm install -g @openai/codex@0.166.0` and sign in
+using `codex login`. `CAD_MATERIAL_CODEX_BIN` may select an operator-reviewed
+executable; `CAD_MATERIAL_CODEX_MODEL` may select a model available to that
+login. The adapter ignores ambient user configuration, rules, project
+instructions, plugins and hooks. It runs in an empty temporary directory with
+shell, image reading and native subagents disabled, no filesystem authority
+outside that directory, and no writable workspace. Only its short-lived,
+bearer-protected MCP endpoint can resolve the selected material. MCP protocol
+handling uses the upstream SDK. The adapter invokes the official noninteractive
+CLI rather than maintaining a session protocol, provider parser or agent loop.
+See [Codex noninteractive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
+and [MCP integration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-The studio exposes cancellation while a historical lookup is pending. A
-cancelled lookup never enters rendering, even if its model response arrives
-after cancellation. Native render cancellation is controlled by the supervisor.
+Before submitting any Codex task, the reviewed Loom reader must authorize
+`codex-selected-material` using `--check-delegation`. The matching
+`delegation.json` must be beside the reader. This mode permits the selected
+drawing, part, accepted revision, artifact revision and material metadata;
+Shuttle adds a fresh evidence ID. Source paths, ORA bytes, meshes, other parts,
+epochs and native records stay local. The studio's history option describes
+this disclosure. A local-only declaration fails before Codex starts. The
+reader checks the declaration again when resolving the artifact.
 
-With the managed host, runtime and reader already configured, the browser
-acceptance can exercise the host-model route with a deterministic local API
-fixture or with the local model. Use a fresh `CAD_PAINT_TEST_OUTPUT` directory
-for each run:
+The studio exposes cancellation while historical verification is pending. It
+revokes the MCP read, interrupts the CLI and waits for its local process to
+close before releasing the save. A late response cannot publish evidence or
+enter rendering. The private `material-codex/receipt.json` records submission
+and CLI completion; `native-events.jsonl` retains Codex events privately for
+inspection, without an application-owned transcript format. A submitted receipt
+without completion requires inspection,
+never automatic replay. Each save folder can be submitted once. Native render
+settlement and accepted product custody remain host-owned.
+
+The old `an-agent-host model` request/adopt driver, model profiles and
+historical Ollama proxy are removed. Historical verification has no fallback
+route or provider switch. Ollama remains optional for the separate task of
+inventing missing finishes; supplying all finishes or reusing accepted ones
+needs no Ollama server.
+
+With the managed host, runtime and matching reader configured, use a fresh
+`CAD_PAINT_TEST_OUTPUT` directory for each acceptance run:
 
 ```sh
 npm run build
-CAD_PAINT_FIXTURE=handwheel \
+npm run test:codex
+CAD_PAINT_FIXTURE=handwheel CAD_PAINT_REAL_CODEX=1 \
   node --test examples/cad-paint/dist/managed.test.js
 ```
 
-Set `CAD_PAINT_REAL_MODEL=1` to forward the requests to the configured local
-Ollama endpoint. The test checks both host model receipts and the accepted
-PNG/ORA artifacts.
+`test:codex` runs the actual pinned binary against a local Responses protocol
+fixture, without credentials. It checks MCP discovery, adoption, foreign-revision
+refusal and no replay. Managed CI uses the same real binary and protocol
+fixture for both CAD drawings and cancellation; fixture output is not evidence
+of model quality. `CAD_PAINT_REAL_CODEX=1` uses the signed-in provider for the
+history task. `CAD_PAINT_REAL_MODEL=1` separately enables live Ollama for
+missing finishes. Real acceptance must distinguish those settings and verify
+the accepted PNG/ORA inventory and actual Krita import separately.
+
+See the [qualification record](examples/cad-paint/qualification-codex-material.md)
+for verified coverage and its limits.

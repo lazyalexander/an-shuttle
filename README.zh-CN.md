@@ -111,10 +111,25 @@ python3 -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTP
 检出中。在成功保存后，编辑器会提供上一次接受版本的手轮握把
 或夹具移动颚。
 
-选择显示的版本会直接读取已接受的 ORA。选择历史验证会要求本地 Ollama 请求一个已批准的记录
-并返回匹配的证据。适配器在读取前会检查文档、部件和版本，并在渲染前验证模型的证明。被拒绝或不可用的证明会导致保存失败。两种路径都会在新请求中记录源版本和精确的产物绑定。
+选择显示的版本会直接读取已验收 ORA。历史查证改由 **Codex CLI 0.166.0** 承担 agent 过程：Codex 调用唯一获准的材质读取工具，再返回结构化采纳决定。Shuttle 核验图纸、部件、确切修订和本次证据编号，将宿主原始证据交给渲染。拒绝、越权、重复读取或取消均不能进入渲染。
 
-历史材质查证统一复用 `an-agent-host model` 的批准、超时、取消和调用记录，
-Shuttle 只校验本次文档、部件、版本和证据 ID，不再维护另一套 Ollama 工具循环。
-不再需要 `CAD_MATERIAL_HOST_AGENT` 开关。配置历史读取器时，应使用同一受审查
-版本目录中的 `delegation.json`。离线直接保存和显式读取已接受材料保持原有入口。
+通过 `npm install -g @openai/codex@0.166.0` 安装固定版本，并执行 `codex login` 登录。`CAD_MATERIAL_CODEX_BIN` 可指定操作员审查的可执行文件，`CAD_MATERIAL_CODEX_MODEL` 可指定该登录可用的模型。适配器忽略环境中的用户配置、执行规则、项目说明、插件与钩子，在空临时目录中运行，关闭 shell、图片读取和原生子 agent，不授予目录外的文件权限或任何写权限。只有短时、带随机令牌的 MCP 端点能解析选定材质。MCP 协议由上游 SDK 处理，agent 循环由 Codex 处理。
+
+在提交任何 Codex 任务前，匹配的 Loom 读取器须通过 `--check-delegation` 核准 `codex-selected-material`。读取器旁的 `delegation.json` 必须允许该模式。允许发送所选图纸、部件、已验收修订、产物修订和材质元数据，以及 Shuttle 新生成的本次证据编号。源文件路径、ORA、网格、其他部件、文档世代和原生记录均留在本地。界面会说明这项披露。仅限本地的声明会在 Codex 启动前拒绝；解析产物时还会再次核验声明。
+
+历史查证可在界面取消。取消会撤销工具读取、终止 CLI，并在本地进程关闭后结束本次保存；迟到结果不能进入渲染。私有 `material-codex/receipt.json` 记录提交与 CLI 完成状态，`native-events.jsonl` 私有保存 Codex 原生事件供检查，不另建应用自己的记录格式；只有提交而无完成记录时须检查，不自动重放。一个保存目录只能提交一次。原生渲染结算和已验收产物保管仍由宿主负责。
+
+旧的 `an-agent-host model` 请求/采纳双阶段驱动、模型配置和历史查证 Ollama 代理已删除，不保留回退通路。Ollama 仍可用于“补全缺失材质”这一独立任务；已提供材质或复用已验收材质时无需启动 Ollama。
+
+配置宿主、运行时和匹配的读取器后，每次验收使用新的 `CAD_PAINT_TEST_OUTPUT`：
+
+```sh
+npm run build
+npm run test:codex
+CAD_PAINT_FIXTURE=handwheel CAD_PAINT_REAL_CODEX=1 \
+  node --test examples/cad-paint/dist/managed.test.js
+```
+
+`test:codex` 使用真实固定版本的 Codex 二进制和本地 Responses 协议样本，无需登录；它验证 MCP 发现、采纳、越权拒绝与禁止重放。CI 对两种图纸和取消流程使用相同的真实二进制及协议样本，样本输出不代表模型质量。`CAD_PAINT_REAL_CODEX=1` 才使用已登录的提供方完成历史查证；`CAD_PAINT_REAL_MODEL=1` 独立控制缺失材质的真实 Ollama 调用。真实验收须区分这些设置，并另外核对 PNG/ORA 清单与实际 Krita 导入。
+
+已验证范围与限制见[验收记录](examples/cad-paint/qualification-codex-material.md)。
