@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import {readFile, readdir, realpath, writeFile} from 'node:fs/promises';
-import {createServer} from 'node:http';
 import {join} from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
@@ -20,7 +19,6 @@ test('a browser save delivers only the native host’s accepted products', {time
   const wheel = await loadDrawing(fileURLToPath(new URL('../handwheel/',import.meta.url)));
   const fixture=process.env.CAD_PAINT_FIXTURE;
   assert.ok(['vise','handwheel','incomplete','cancelled'].includes(fixture!));
-  const liveModel=process.env.CAD_PAINT_REAL_MODEL==='1';
   const liveHistory=fixture==='handwheel';
   const realCodex=process.env.CAD_PAINT_REAL_CODEX==='1';
   const codexPeer=realCodex ? undefined : await codexFixture(root,process.env.CAD_MATERIAL_CODEX_BIN ?? 'codex');
@@ -32,8 +30,7 @@ test('a browser save delivers only the native host’s accepted products', {time
   });
   const cancelOnly=liveHistory && process.env.CAD_PAINT_CANCEL_ONLY==='1';
   const direct=process.env.CAD_PAINT_DIRECT==='1';
-  const upstream=process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434';
-  const direction='Use dark walnut for the grip; preserve the supplied metal finishes.';
+  const direction=fixture==='vise' ? 'Use brushed steel for the moving jaw; preserve supplied finishes.' : 'Use dark walnut for the grip; preserve the supplied metal finishes.';
   const materials: string[][] = [];
   let lookups=0, proofs=0;
   let holdRequest=false;
@@ -43,32 +40,16 @@ test('a browser save delivers only the native host’s accepted products', {time
   const delayed=new Promise<void>(resolve=>{releaseRequest=resolve;});
   const requested=new Promise<void>(resolve=>{lookupRequested=resolve;});
   const sent=new Promise<boolean>(resolve=>{proxyFinished=resolve;});
-  const exchanges: {request: {prompt:string;model:string;format:{required:string[]}};response:string}[] = [];
-  const model = createServer(async (request, response) => {
-    try {
-      let message = '';
-      for await (const chunk of request) message += chunk;
-      const input=JSON.parse(message);
-      assert.equal(request.url,'/api/generate','Historical verification must use Codex MCP');
-      materials.push(input.format.required);
-      const result=liveModel
-        ? await fetch(new URL('/api/generate',upstream),{method:'POST',headers:{'Content-Type':'application/json'},
-          body:message,signal:AbortSignal.timeout(120_000)}).then(async r=>{assert.equal(r.status,200);return r.text();})
-        : JSON.stringify({response:JSON.stringify(Object.fromEntries(input.format.required.map((part:string)=>
-          [part,{finish:'walnut',color:'#4a2c23',metallic:0,roughness:0.8}])) )});
-      exchanges.push({request:input,response:result});
-      response.writeHead(200,{'Content-Type':'application/json'});response.end(result);
-    } catch(error) {
-      if (holdRequest) proxyFinished(false);
-      response.writeHead(502);response.end(String(error));
+  const observeCompletions=async(output:string)=>{
+    const observed:string[][]=[];
+    const attempts=await readdir(output).catch(()=>[]);
+    const ordered=await Promise.all(attempts.map(async attempt=>({attempt,revision:JSON.parse(await readFile(join(output,attempt,'saved.json'),'utf8').catch(()=>'{}')).source?.revision ?? 0})));
+    for (const {attempt} of ordered.sort((a,b)=>a.revision-b.revision)) {
+      const raw=await readFile(join(output,attempt,'material-completion-codex','receipt.json'),'utf8').catch(()=>null);
+      if (raw) {const receipt=JSON.parse(raw);assert.equal(receipt.status,'completed');observed.push(receipt.scope.parts);}
     }
-  });
-  model.listen(0,'127.0.0.1');
-  await once(model,'listening');
-  const modelAddress=model.address();
-  assert.ok(modelAddress && typeof modelAddress!=='string');
-  process.env.OLLAMA_HOST='http://127.0.0.1:'+modelAddress.port;
-  t.after(() => {model.closeAllConnections();return new Promise<void>(done => model.close(() => done()));});
+    materials.splice(0,materials.length,...observed);
+  };
   console.log('Launching Chrome for',fixture);
   const browser = await chromium.launch({channel:'chrome'});
   t.after(() => browser.close());
@@ -110,7 +91,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         if (drawing.id!=='handwheel' || direct) {
           for (const part of Object.keys(drawing.parts)) await first.locator('#'+part).selectOption('0');
         }
-        if (liveHistory) await first.locator('#grip').selectOption('0');
+        if (!direct && drawing.id==='vise') await first.locator('#movingJaw').selectOption('');
         const before = await (await first.request.get(origin+'/state')).json();
         const post=(originHeader:string,body:unknown)=>fetch(origin+'/save',{method:'POST',
           headers:{origin:originHeader,'content-type':'application/json'},body:JSON.stringify(body)});
@@ -182,6 +163,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         assert.equal(response.status(),drawing===broken || drawing===cancelled ? 500 : 200);
         const uiLockMs=await first.evaluate(() => performance.measure('paint lock','paint-click','paint-locked').duration);
         const locks=[uiLockMs];
+        await observeCompletions(output);
         const measurements={drawing:drawing.id,clickToLockMs:uiLockMs,saveResponseMs,
           modelRequests:materials.length-clicks,http:response.status()};
         if (direct) {
@@ -201,7 +183,7 @@ test('a browser save delivers only the native host’s accepted products', {time
         await second.locator('#controls:enabled').waitFor();
         const state = await (await fetch(origin+'/state',{signal:AbortSignal.timeout(10_000)})).json();
         assert.equal(state.locked,false); assert.equal(state.revision,1); assert.equal(state.epoch,before.epoch);
-        assert.equal(materials.length-clicks,drawing.id==='handwheel' && !liveHistory && !direct ? 1 : 0);
+        assert.equal(materials.length-clicks,!direct && ['vise','handwheel'].includes(drawing.id) ? 1 : 0);
         const [attempt] = await readdir(output);
         if (drawing===broken || drawing===cancelled) {
           assert.equal(state.artifact,null); assert.deepEqual(opened,[]);
@@ -217,11 +199,12 @@ test('a browser save delivers only the native host’s accepted products', {time
             assert.deepEqual(Buffer.from(await product.arrayBuffer()),await readFile(join(output,attempt,name)));
           }
         }
-        if (drawing===wheel && !liveHistory && !direct) {
-          const brief=JSON.parse(exchanges.at(-1)!.request.prompt.split('\n').slice(1).join('\n'));
+        if (!direct && codexPeer && ['vise','handwheel'].includes(drawing.id)) {
+          const brief=codexPeer.completions.at(-1)!.brief;
           assert.equal(brief.description,drawing.description);assert.equal(brief.direction,direction);
           assert.deepEqual(brief.supplied,state.scene.materials);
-          assert.deepEqual(brief.missing,{grip:{label:drawing.parts.grip.label}});
+          const part=drawing===wheel ? 'grip' : 'movingJaw';
+          assert.deepEqual(brief.missing,{[part]:{label:drawing.parts[part].label}});
           assert.deepEqual(Object.keys(brief).sort(),['description','direction','missing','supplied']);
         }
         if (!direct && (drawing===wheel || drawing===benchVise) && process.env.CAD_MATERIAL_READER) {
@@ -233,11 +216,12 @@ test('a browser save delivers only the native host’s accepted products', {time
           await stale.text();
 
           let current=state;
-          for (const mode of cancelOnly ? [] : ['complement','exact','history']) {
+          for (const mode of cancelOnly ? [] : ['complement','exact','history','history-plus-completion']) {
             const generated=materials.length;
             if (mode==='complement') await first.locator('#'+part).selectOption(drawing===wheel ? '0' : '');
             if (mode==='exact') await first.locator('#reuseGrip').check();
-            if (mode==='history') await first.locator('#verifyHistory').check();
+            if (mode.startsWith('history')) await first.locator('#verifyHistory').check();
+            if (mode==='history-plus-completion') await first.locator(drawing===wheel ? '#bearing' : '#rail').selectOption('');
             await markSave();
             const start=performance.now();
             const reply=first.waitForResponse(r=>r.url()===origin+'/save',{timeout:630_000})
@@ -252,14 +236,15 @@ test('a browser save delivers only the native host’s accepted products', {time
             const elapsed=await first.evaluate(()=>performance.measure('paint lock','paint-click','paint-locked').duration);
             locks.push(elapsed);
             console.log(JSON.stringify({drawing:drawing.id,mode,clickToLockMs:elapsed,saveResponseMs:completed.saveResponseMs}));
+            await observeCompletions(output);
             const after=await readState();
             assert.equal(after.revision,current.revision+1);
             assert.deepEqual(after.materialReference,{part,revision:after.revision});
             assert.notEqual(after.artifact,current.artifact);
-            assert.equal(materials.length-generated,mode==='complement' && drawing===benchVise ? 1 : 0);
-            assert.equal(lookups,mode==='history' ? 1 : 0);
+            assert.equal(materials.length-generated,mode==='history-plus-completion' || (mode==='complement' && drawing===benchVise) ? 1 : 0);
+            assert.equal(lookups,mode==='history-plus-completion' ? 2 : mode==='history' ? 1 : 0);
             assert.equal(proofs,lookups);
-            if (mode==='history') {
+            if (mode.startsWith('history')) {
               const folder=join(output,after.artifact.split('/').at(-1));
               const receipt=JSON.parse(await readFile(join(folder,'material-codex','receipt.json'),'utf8'));
               assert.equal(receipt.status,'completed');
@@ -324,8 +309,8 @@ test('a browser save delivers only the native host’s accepted products', {time
     assert.deepEqual(materials,[]);
     assert.equal(lookups+proofs,0);
   } else {
-    assert.deepEqual(materials,fixture==='handwheel' && !liveHistory ? [['grip']] :
-      fixture==='vise' && process.env.CAD_MATERIAL_READER ? [['movingJaw']] : []);
+    assert.deepEqual(materials,fixture==='handwheel' ? [['grip'],...(process.env.CAD_MATERIAL_READER ? [['bearing']] : [])] :
+      fixture==='vise' ? [['movingJaw'],...(process.env.CAD_MATERIAL_READER ? [['movingJaw'],['rail']] : [])] : []);
   }
-  await writeFile(join(root,fixture+'-model-exchange.local.json'),JSON.stringify({liveModel,exchanges}));
+  await writeFile(join(root,fixture+'-codex-observations.local.json'),JSON.stringify({realCodex,completions:codexPeer?.completions ?? null}));
 });

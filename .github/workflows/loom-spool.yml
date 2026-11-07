@@ -89,17 +89,17 @@ jobs:
           ref: ${{ env.MATERIAL_READER_REV }}
           path: integrations/material-evidence
           persist-credentials: false
-      - name: Install qualified Codex harness and check scoped MCP
+      - name: Install qualified Codex and check material tasks
         run: |
           npm install -g @openai/codex@0.166.0
           npm run test:codex
-      - name: Browser save (vise)
+      - name: Browser save (vise, Codex completion and reuse)
         timeout-minutes: 4
         env:
           CAD_PAINT_FIXTURE: vise
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
         run: node --test examples/cad-paint/dist/managed.test.js
-      - name: Browser save (handwheel, Codex MCP)
+      - name: Browser save (handwheel, Codex completion and reuse)
         timeout-minutes: 8
         env:
           CAD_PAINT_FIXTURE: handwheel
