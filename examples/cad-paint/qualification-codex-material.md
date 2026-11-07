@@ -1,5 +1,8 @@
 # Codex historical material qualification
 
+This records the history-only migration stage. For the subsequent completion
+replacement and current acceptance boundary, see [completion qualification](qualification-codex-completion.md).
+
 Date: 2026-11-06. Scope: replace the historical material agent process, retain
 application authority and native artifact custody, then remove the previous
 request/adopt driver. Historical verification has one production harness.

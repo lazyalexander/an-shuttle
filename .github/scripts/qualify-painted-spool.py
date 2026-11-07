@@ -92,7 +92,7 @@ def verify(work, direct=False):
             continue
         if 2 in attempts:
             check_outputs(attempts[2], parts, 2)
-        for revision in (3, 4):
+        for revision in (3, 4, 5):
             if revision not in attempts:
                 continue
             current = attempts[revision]
@@ -101,7 +101,7 @@ def verify(work, direct=False):
             previous = json.loads((source / "accepted.json").read_text())
             reference = next(item["binding"] for item in previous["outputs"] if item["path"] == "painting.ora")
             request = json.loads((current / "request.json").read_text())
-            assert request["agent"]["model"] is None
+            assert (request["agent"]["model"] is None) == (revision != 5)
             with ZipFile(source / "painting.ora") as before, ZipFile(current / "painting.ora") as after:
                 original = json.loads(before.read("data/scene.json"))
                 reused = json.loads(after.read("data/scene.json"))
@@ -130,7 +130,7 @@ def verify(work, direct=False):
     timings = [work / (name + "-lock-timings.json") for name in ("vise", "handwheel")]
     if any(path.exists() for path in timings):
         samples = sorted(value for path in timings for value in json.loads(path.read_text()))
-        assert len(samples) == 8
+        assert len(samples) == 10
         # The nearest-rank p95 is the maximum of eight samples.
         print(json.dumps({"click_to_lock_ms": samples, "p95_ms": samples[-1]}), flush=True)
         assert samples[-1] <= 180
@@ -156,7 +156,10 @@ def verify_krita(work, executable):
     reports = []
     for name, parts in [("vise", ["base", "rail", "fixedJaw", "movingJaw"]),
                         ("handwheel", ["stand", "bearing", "wheel", "pin", "grip"])]:
-        attempt, = (work / name).glob("drawing-*")
+        accepted = [candidate for candidate in (work / name).glob("drawing-*")
+                    if (candidate / "accepted.json").is_file()]
+        attempt = max(accepted, key=lambda candidate: json.loads(
+            (candidate / "saved.json").read_text())["source"]["revision"])
         output = root / (name + ".kra")
         with (root / (name + ".log")).open("w") as log:
             subprocess.run([str(executable), "--resource-location", str(resources),
