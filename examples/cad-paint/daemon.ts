@@ -32,9 +32,7 @@ export async function waitTask(id:string,signal?:AbortSignal) {
     if(signal?.aborted && !sent) {
       try {await daemonApproved({op:'cancel',id});sent=true;} catch {await delay(500);continue;}
     }
-    const state=await daemonRequest<{tasks:any[]}>({op:'show'}).catch(()=>undefined);
-    if(!state) {await delay(500);continue;}
-    const task=state.tasks.find(task=>task.id===id);
+    const task=await daemonRequest<any>({op:'task',id}).catch(()=>undefined);
     if(!task) {await delay(500);continue;} // Missing evidence stays unknown.
     if(task.state==='settled') {signal?.throwIfAborted();return task;}
     // A lost service connection is an unknown result. Never submit another task.
