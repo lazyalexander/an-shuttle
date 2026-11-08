@@ -1,3 +1,4 @@
+import {useDaemon} from './daemon.test-helper.js';
 import assert from 'node:assert/strict';
 import {once} from 'node:events';
 import {readFile, readdir, realpath, writeFile} from 'node:fs/promises';
@@ -13,6 +14,8 @@ import {openInKrita} from '@an-shuttle/krita/document.js';
 import {loadDrawing,studio} from './server.js';
 import {codexMaterialTurn} from './codex-material.js';
 import {codexFixture} from './codex-fixture.test-helper.js';
+
+useDaemon();
 
 test('a browser save delivers only the native host’s accepted products', {timeout:1_350_000}, async t => {
   const root = await realpath(process.env.CAD_PAINT_TEST_OUTPUT!);

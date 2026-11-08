@@ -7,7 +7,7 @@
     "./*": "./dist/*"
   },
   "dependencies": {
-    "@an-loom/cad-paint-spool": "https://raw.githubusercontent.com/lazyalexander/an-loom/821176910ceba06fa5fa0b6036d7f4d09291c2d1/examples/cad-paint/releases/an-loom-cad-paint-spool-0.1.0.tgz",
+    "@an-loom/cad-paint-spool": "https://raw.githubusercontent.com/lazyalexander/an-spool/a9bffc3f757f7c82c4dcbca78d063f317d38a27d/spools/cad-paint/releases/an-loom-cad-paint-spool-0.1.0.tgz",
     "@an-shuttle/cad": "0.0.0",
     "@an-shuttle/krita": "0.0.0",
     "@modelcontextprotocol/sdk": "1.29.0",

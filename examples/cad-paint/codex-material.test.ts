@@ -1,3 +1,4 @@
+import {useDaemon} from './daemon.test-helper.js';
 import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -12,6 +13,8 @@ import {paintStandalone} from './spool.js';
 import {benchVise} from '@an-shuttle/cad/drawing.js';
 
 // Explicit integration suite: requires the qualified CLI on PATH, no login or model key.
+useDaemon();
+
 test('real Codex performs scoped MCP adoption and fails closed on a foreign revision',{timeout:120_000},async t=>{
   const root=await mkdtemp(join(tmpdir(),'cad-codex-contract-'));
   const selected=process.env.CAD_MATERIAL_CODEX_BIN ?? 'codex';
@@ -44,7 +47,7 @@ test('real Codex performs scoped MCP adoption and fails closed on a foreign revi
         assert.ok(![...fixture.tools].some(name=>/exec_command|view_image|spawn_agent|apply_patch/.test(name)));
         const receipt=JSON.parse(await readFile(join(folder,'material-codex','receipt.json'),'utf8'));
         assert.equal(receipt.status,'completed');
-        assert.match(await readFile(join(folder,'material-codex','native-events.jsonl'),'utf8'),/"type":"thread.started"/);
+        assert.match(await readFile(join(receipt.service,'jobs',receipt.task,'native-events.jsonl'),'utf8'),/"type":"thread.started"/);
       } finally {await fixture.close();}
     });
   }

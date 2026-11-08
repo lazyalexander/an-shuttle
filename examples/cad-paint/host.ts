@@ -1,3 +1,4 @@
+import {daemonApproved,daemonRequest,selectedHost} from './daemon.js';
 import {execFile} from 'node:child_process';
 import {mkdir, readFile, realpath, rename, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
@@ -11,7 +12,6 @@ const run = 'paint';
 const products = ['beauty.png', 'painting.ora'] as const;
 interface Identity { instance: string; release: string }
 interface RunStatus extends Identity { run: string; phase: string; termination_confirmed: boolean; execution_status: string }
-interface Result extends Identity { run: string; status: string; workspace?: {termination_confirmed: boolean} }
 interface Output { path: string; binding: {revision: string; content_sha256: string} }
 interface Inventory extends Identity { run: string; catalog: string; outputs: Output[] }
 
@@ -28,15 +28,8 @@ async function command<T>(binary: string, args: string[], signal?: AbortSignal):
   }
 }
 
-async function hostBinary() {
-  const selected=process.env.AN_AGENT_HOST_BIN ?? 'an-agent-host';
-  // The supervisor binds its own executable. Resolve operator-provided launchers before the preview.
-  const located=selected.includes('/') ? selected : (await execute('/usr/bin/which',[selected])).stdout.trim();
-  return realpath(located);
-}
-
 async function selectHost(): Promise<Host> {
-  const binary=await hostBinary();
+  const binary=await selectedHost();
   return <T>(...args: string[]) => command<T>(binary,args);
 }
 
@@ -51,11 +44,16 @@ function sameRun(record: Identity & {run: string}, loaded: Identity) {
 }
 
 async function executeAttempt(host: Host, instance: string, loaded: Identity, input: string, waiting: () => void) {
-  const args = await approval(host,['spool-supervisor','start',instance,run,input,'120']);
-  // Once submitted the independent owner may outlive its CLI. Never replay the start.
-  const result = await host<Result>(...args).catch(() => undefined);
-  if (result && sameRun(result, loaded) && result.workspace?.termination_confirmed === true) return result.status;
+  await daemonRequest({op:'register',instance});
+  try {
+    const task=await daemonApproved({op:'submit',instance,run,input,seconds:120});
+    await writeFile(join(instance,'daemon-task.json'),JSON.stringify(task),{flag:'wx',mode:0o600});
+  } catch {
+    // Submission may already be durable. Only original native evidence can
+    // release the CAD lock; do not submit again or turn reply loss into failure.
+  }
   waiting();
+  // Queue completion never substitutes for the exact original native receipt.
   return observeTermination(loaded,() => host<RunStatus>('spool-status',instance,run));
 }
 
@@ -125,7 +123,7 @@ export async function readPreviousMaterial(reader:string, folder:string, documen
   const selected=accepted.outputs.find(output=>output.path==='painting.ora')?.binding.revision;
   if (!selected) throw Error('Missing accepted ORA revision');
   const result=await command<MaterialEvidence>(process.env.PYTHON_BIN ?? 'python3',
-    ['-B',reader,'--host',await hostBinary(),'--instance',join(folder,'instance'),'--run',run,
+    ['-B',reader,'--host',await selectedHost(),'--instance',join(folder,'instance'),'--run',run,
       '--paint-release',accepted.release,'--artifact-revision',selected,
       '--document',document,'--epoch',epoch,'--revision',String(revision),'--part',part,...(delegated ? ['--delegated','--disclosure','codex-selected-material'] : [])],signal);
   if (result.schema!=='cad-material-evidence-v1' || result.part!==part ||
