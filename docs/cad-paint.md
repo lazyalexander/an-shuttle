@@ -10,7 +10,7 @@ Shuttle connects an application view to a local workflow. The CAD painting examp
 
 ## CAD painting spool
 
-For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/3a3666cc9994f6add1c453f2684285012caa44cf) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. Use release builds (`cargo build --release --locked --bin an-loom` and `cargo build --release --locked --bin an-agent-host` in the respective repositories) because the host hashes the selected Python environment. From a clean checkout, select a dedicated runtime once:
+For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/3a3666cc9994f6add1c453f2684285012caa44cf) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. Use release builds (`cargo build --release --locked --bin an-loom` and `cargo build --release --locked --bin an-agent-host` in the respective repositories) because the host hashes the selected Python environment. Before starting the studio, configure [the local user service](#local-user-service). From a clean checkout, select a dedicated runtime once:
 
 ```sh
 npm ci
@@ -182,7 +182,7 @@ settlement and accepted product custody remain host-owned.
 
 ### Complete missing materials with the same Codex harness
 
-Both material tasks share `codex.ts`, one finite official CLI entry with the
+Both material tasks share `codex.ts`, the existing host delegation client with the
 same pinned version, permissions, deadline, cancellation and native-event
 recording. Completion has no MCP tool. The spool's immutable `instructions`,
 `materialSchema` and `planKit` still own domain knowledge and validation.
@@ -251,9 +251,20 @@ artifact checkout path. A lost connection observes the same task; it never
 resubmits work or releases the CAD lock without original termination evidence.
 No legacy local Codex launcher is retained as a fallback.
 
-## Domain policy ownership / 领域策略归属
+## Domain policy ownership
 
 The separately versioned `@an-spool/cad-material-policy` owns completion instructions,
 proposal schemas, appearance-kit planning and historical-material adoption checks.
 Shuttle supplies the existing harness transport, permission-bound evidence access,
 CAD revision lock and application delivery. The immutable renderer remains 0.1.0.
+
+## Task permission boundary
+
+The trusted local operator creates a bounded root grant for the selected harness
+profile. Shuttle derives a narrower child for each finite material task and sends
+that credential through the existing task socket. MCP material reads check the
+active grant before reading and before returning evidence; the application still
+owns explicit disclosure. Finalization revokes the root. Local receipt files keep
+grant IDs and the service/task reference, never bearer secrets. Original host owners
+keep model events, cancellation and termination evidence. A local client exit does
+not confirm remote model termination. See the [host service contract](https://github.com/lazyalexander/an-agent/blob/dev-advance/doc/daemon.md).

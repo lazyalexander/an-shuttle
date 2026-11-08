@@ -16,7 +16,7 @@ Shuttle 将应用程序视图连接到本地工作流。CAD 绘画示例把小�
 
 ## CAD 绘画 spool
 
-要使用受管保存，请在 macOS 上安装 Node 22+、Python 3.11 或 3.12，以及 Krita。将固定的 [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) 和 [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/3a3666cc9994f6add1c453f2684285012caa44cf) 放在 PATH 中，或者使用 `AN_LOOM_BIN` 和 `AN_AGENT_HOST_BIN` 选择二进制文件。使用发布版本（在相应仓库中的 `cargo build --release --locked --bin an-loom` 和 `cargo build --release --locked --bin an-agent-host`）因为宿主会计算所选 Python 环境的哈希。从干净的检出开始，选择一个专用运行时：
+要使用受管保存，请在 macOS 上安装 Node 22+、Python 3.11 或 3.12，以及 Krita。将固定的 [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) 和 [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/3a3666cc9994f6add1c453f2684285012caa44cf) 放在 PATH 中，或者使用 `AN_LOOM_BIN` 和 `AN_AGENT_HOST_BIN` 选择二进制文件。使用发布版本（在相应仓库中的 `cargo build --release --locked --bin an-loom` 和 `cargo build --release --locked --bin an-agent-host`）因为宿主会计算所选 Python 环境的哈希。启动工作台前先配置[本地用户服务](#本地用户服务)。从干净的检出开始，选择一个专用运行时：
 
 ```sh
 npm ci
@@ -117,15 +117,15 @@ python3 -B .github/scripts/qualify-painted-spool.py verify "$CAD_PAINT_TEST_OUTP
 检出中。在成功保存后，编辑器会提供上一次接受版本的手轮握把
 或夹具移动颚。
 
-选择显示的版本会直接读取已验收 ORA。历史查证改由 **Codex CLI 0.166.0** 承担 agent 过程：Codex 调用唯一获准的材质读取工具，再返回结构化采纳决定。Shuttle 核验图纸、部件、确切修订和本次证据编号，将宿主原始证据交给渲染。拒绝、越权、重复读取或取消均不能进入渲染。
+选择显示的版本会直接读取已验收 ORA。历史查证改由 **Codex CLI 0.166.0** 承担 agent 过程：Codex 调用唯一获准的材质读取工具，再返回结构化采纳决定。an-spool 领域策略核验图纸、部件、确切修订和本次证据编号，将宿主原始证据交给渲染。拒绝、越权、重复读取或取消均不能进入渲染。
 
 通过 `npm install -g @openai/codex@0.166.0` 安装固定版本，并执行 `codex login` 登录。`CAD_MATERIAL_CODEX_BIN` 可指定操作员审查的可执行文件，`CAD_MATERIAL_CODEX_MODEL` 可指定该登录可用的模型。适配器忽略环境中的用户配置、执行规则、项目说明、插件与钩子，在空临时目录中运行，关闭 shell、图片读取和原生子 agent，不授予目录外的文件权限或任何写权限。只有短时、带随机令牌的 MCP 端点能解析选定材质。MCP 协议由上游 SDK 处理，agent 循环由 Codex 处理。
 
 在提交任何 Codex 任务前，匹配的 Loom 读取器须通过 `--check-delegation` 核准 `codex-selected-material`。读取器旁的 `delegation.json` 必须允许该模式。允许发送所选图纸、部件、已验收修订、产物修订和材质元数据，以及 Shuttle 新生成的本次证据编号。源文件路径、ORA、网格、其他部件、文档世代和原生记录均留在本地。界面会说明这项披露。仅限本地的声明会在 Codex 启动前拒绝；解析产物时还会再次核验声明。
 
-历史查证可在界面取消。取消会撤销工具读取、终止 CLI，并在本地进程关闭后结束本次保存；迟到结果不能进入渲染。私有 `material-codex/receipt.json` 记录提交与 CLI 完成状态，`native-events.jsonl` 私有保存 Codex 原生事件供检查，不另建应用自己的记录格式；只有提交而无完成记录时须检查，不自动重放。一个保存目录只能提交一次。原生渲染结算和已验收产物保管仍由宿主负责。
+历史查证可在界面取消。取消会撤销工具读取、终止 CLI，并在本地进程关闭后结束本次保存；迟到结果不能进入渲染。私有 `material-codex/receipt.json` 记录提交与 CLI 完成状态，其中的服务与任务引用定位 host 私有保存的 Codex 原生事件，不另建应用自己的记录格式；只有提交而无完成记录时须检查，不自动重放。一个保存目录只能提交一次。原生渲染结算和已验收产物保管仍由宿主负责。
 
-缺失材质补全与历史查证共用 `codex.ts` 中唯一的有限 CLI 入口，使用相同版本、权限、时限、取消和原生事件记录。补全阶段不提供 MCP 工具。领域包的只读 `instructions`、`materialSchema`、`planKit` 继续承载领域知识与验收规则；Codex 只接收说明、绘制要求、已有材质与缺失部件标签，不接收几何、路径、文档世代或原生产物。界面会说明这项披露。
+缺失材质补全与历史查证共用 `codex.ts` 中现有的 host 委派客户端，使用相同版本、权限、时限、取消和原生事件记录。补全阶段不提供 MCP 工具。领域包的只读 `instructions`、`materialSchema`、`planKit` 继续承载领域知识与验收规则；Codex 只接收说明、绘制要求、已有材质与缺失部件标签，不接收几何、路径、文档世代或原生产物。界面会说明这项披露。
 
 Codex 只能返回缺失部件的 JSON 数据；额外部件、非法颜色及越界或非有限数值会在生成 kit、渲染请求或原生实例前被拒绝。已有和已复用材质不会被覆盖。混合任务会把已核准的历史材质作为已有事实提供给补全，并在 kit 中原样保留。精确复用与其它缺失材质补全组合时，也须先通过读取器的披露预检，才会把历史材质信息交给 Codex；仅精确复用仍离线执行。
 
@@ -146,9 +146,28 @@ CAD_PAINT_FIXTURE=handwheel CAD_PAINT_REAL_CODEX=1 \
 
 当前覆盖见[补全验收记录](../examples/cad-paint/qualification-codex-completion.md)；[历史查证验收记录](../examples/cad-paint/qualification-codex-material.md) 保留前一阶段的实证。
 
-## Domain policy ownership / 领域策略归属
+## 本地用户服务
 
-The separately versioned `@an-spool/cad-material-policy` owns completion instructions,
-proposal schemas, appearance-kit planning and historical-material adoption checks.
-Shuttle supplies the existing harness transport, permission-bound evidence access,
-CAD revision lock and application delivery. The immutable renderer remains 0.1.0.
+材质提案和绘制都使用选定的 an-agent 服务。把 host 路径解析为真实绝对路径，
+用 `an-agent-host daemon init /absolute/service 2` 初始化私有服务目录，
+再运行 `an-agent-host daemon serve /absolute/service` 或使用生成的 LaunchAgent。
+启动工作台前，将 `AN_AGENT_HOST_BIN` 指向同一个 host，
+将 `AN_AGENT_DAEMON_ROOT` 指向服务目录。私有 `endpoint.json` 提供只读观测界面入口。
+
+Shuttle 保留应用披露、请求校验、CAD 锁和应用交付；服务负责有限 Codex 客户端、队列、
+原执行者和资源观测。绘制沿用原生执行与产物检出流程；连接中断时观察原任务，不重复提交，
+不在缺少原终止证据时释放 CAD 锁。不再保留旧本地 Codex 启动器作为回退。
+
+## 领域策略归属
+
+独立版本的 `@an-spool/cad-material-policy` 负责补全指令、提案结构、外观 kit 规划及历史材质采纳校验。
+Shuttle 提供现有 harness 通信、受权限约束的证据读取、CAD 版本锁和应用交付。
+不可变渲染包仍为 0.1.0。
+
+## 任务权限边界
+
+受信任的本地操作者为选定 harness 配置创建有边界的根授权；Shuttle 为有限材质任务派生更窄的子授权，
+通过现有任务接口传递凭据。MCP 材质读取在读前与返回前检查授权是否仍有效，应用继续负责明确披露。
+任务收尾撤销根授权。客户端收据只记录授权编号和服务／任务引用，不保存授权密钥。
+原 host 执行者保管模型事件、取消与终止证据。本地客户端退出不证明远端模型已终止。
+见[host 服务契约](https://github.com/lazyalexander/an-agent/blob/dev-advance/doc/daemon.md)。
