@@ -10,7 +10,7 @@ Shuttle connects an application view to a local workflow. The CAD painting examp
 
 ## CAD painting spool
 
-For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/7c5fa1f2c70d36fbdd8b4054ca9384dfa9174f75) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. Use release builds (`cargo build --release --locked --bin an-loom` and `cargo build --release --locked --bin an-agent-host` in the respective repositories) because the host hashes the selected Python environment. From a clean checkout, select a dedicated runtime once:
+For a managed save, install Node 22+, Python 3.11 or 3.12, and Krita on macOS. Put the pinned [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) and [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/3a3666cc9994f6add1c453f2684285012caa44cf) on PATH, or select the binaries with `AN_LOOM_BIN` and `AN_AGENT_HOST_BIN`. Use release builds (`cargo build --release --locked --bin an-loom` and `cargo build --release --locked --bin an-agent-host` in the respective repositories) because the host hashes the selected Python environment. From a clean checkout, select a dedicated runtime once:
 
 ```sh
 npm ci
@@ -90,6 +90,16 @@ An edit clears the mark and invalidates its target immediately. The first save s
 Run `npm test` with the rendering dependencies installed. With Google Chrome installed, `npm run test:browser` checks view targeting, multi-tab locks and recovery. Both suites use the same incremental TypeScript build.
 
 ## Managed CAD and native Krita acceptance
+
+Material tasks now carry host-issued task credentials through the existing daemon
+client. The trusted Shuttle prepares a finite harness permission, derives a child
+grant for the selected material agent, and uses the capability-authenticated task
+endpoint for submission, status and result retrieval. The original exact request
+approval still applies. Cancellation revokes the child's grant; completion closes
+the root grant. The material MCP checks the same grant before reading and before
+returning evidence. Receipts retain grant IDs and never bearer secrets. This client
+requires the host task-permission operations described in its
+[service contract](https://github.com/lazyalexander/an-agent/blob/dev-advance/doc/daemon.md).
 
 The [portable acceptance](examples/cad-paint/acceptance/macos.json) records actual
 two-tab saves, one local Gemma material proposal, host cancellation, fixed output

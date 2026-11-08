@@ -1,5 +1,11 @@
 # an-shuttle
 
+材质任务通过现有 daemon 客户端携带宿主签发的任务凭据。可信 Shuttle 为选定 harness
+申请权限并向材质 agent 派生子授权，提交、查询和领取结果使用任务权限入口。完整请求
+仍经过原有精确审批。取消会撤销子授权，完成后关闭根授权。材质 MCP 在读取前和返回前
+核验同一授权。回执仅记录授权标识。该客户端需要宿主的任务级权限接口，见
+[服务契约](https://github.com/lazyalexander/an-agent/blob/dev-advance/doc/daemon.md)。
+
 [English](README.md) · 中文译文，以英文为准。
 
 Shuttle 将应用程序视图连接到本地工作流。CAD 绘画示例把小型参数化台钳的一次保存转换成透明绘画素材，可在 Krita 中独立打开。
@@ -10,7 +16,7 @@ Shuttle 将应用程序视图连接到本地工作流。CAD 绘画示例把小�
 
 ## CAD 绘画 spool
 
-要使用受管保存，请在 macOS 上安装 Node 22+、Python 3.11 或 3.12，以及 Krita。将固定的 [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) 和 [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/7c5fa1f2c70d36fbdd8b4054ca9384dfa9174f75) 放在 PATH 中，或者使用 `AN_LOOM_BIN` 和 `AN_AGENT_HOST_BIN` 选择二进制文件。使用发布版本（在相应仓库中的 `cargo build --release --locked --bin an-loom` 和 `cargo build --release --locked --bin an-agent-host`）因为宿主会计算所选 Python 环境的哈希。从干净的检出开始，选择一个专用运行时：
+要使用受管保存，请在 macOS 上安装 Node 22+、Python 3.11 或 3.12，以及 Krita。将固定的 [an-loom CLI](https://github.com/lazyalexander/an-loom/tree/9089b0283cc9077f51447e38b32f553049948d98) 和 [an-agent-host CLI](https://github.com/lazyalexander/an-agent/tree/3a3666cc9994f6add1c453f2684285012caa44cf) 放在 PATH 中，或者使用 `AN_LOOM_BIN` 和 `AN_AGENT_HOST_BIN` 选择二进制文件。使用发布版本（在相应仓库中的 `cargo build --release --locked --bin an-loom` 和 `cargo build --release --locked --bin an-agent-host`）因为宿主会计算所选 Python 环境的哈希。从干净的检出开始，选择一个专用运行时：
 
 ```sh
 npm ci
