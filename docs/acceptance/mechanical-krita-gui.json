@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-08",
+  "krita_version": "5.3.4",
+  "bridge": "packages/krita/document.ts openInKrita",
+  "scope": "Film first-frame reference with a separate GUI paint layer",
+  "cases": {
+    "steam": {
+      "passed": true,
+      "layers": 2,
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "changed_pixels": 389,
+      "format": "application/x-krita",
+      "handoff": "existing Shuttle openInKrita",
+      "interaction": "GUI paint, save and reopen observed",
+      "original_bytes": 8874752,
+      "compact_bytes": 8204574,
+      "all_entry_payloads_identical": true,
+      "gui_reopened": true,
+      "formally_accepted_kra": true
+    },
+    "inline4": {
+      "passed": true,
+      "layers": 2,
+      "dimensions": [
+        1920,
+        1080
+      ],
+      "changed_pixels": 8251,
+      "format": "application/x-krita",
+      "handoff": "existing Shuttle openInKrita",
+      "interaction": "GUI paint, save and reopen observed",
+      "original_bytes": 8940587,
+      "compact_bytes": 8307209,
+      "all_entry_payloads_identical": true,
+      "gui_reopened": true,
+      "formally_accepted_kra": true
+    }
+  }
+}

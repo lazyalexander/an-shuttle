@@ -53,3 +53,7 @@ editable in Krita. This example exercises the bridges; CAD is not the product bo
 [Setup, acceptance and limitations](docs/cad-paint.md) ·
 [Layered sample](examples/cad-paint/sample/vise.ora) ·
 [Domain spool catalog](https://github.com/lazyalexander/an-spool)
+
+Kit labels files modified or created by an agent. Unchanged copies retain their silk baseline label. Modification history, current baseline match, trust and retention decisions remain separate records. Paths and legacy slot names do not define this label.
+
+[Mechanical Krita GUI round-trip](docs/mechanical-krita-gui.md)
