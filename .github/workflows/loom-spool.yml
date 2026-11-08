@@ -23,7 +23,7 @@ jobs:
       CARGO_INCREMENTAL: '0'
       LOOM_REV: 9089b0283cc9077f51447e38b32f553049948d98
       MATERIAL_READER_REV: 8c87a0ce0a34e1ed5bdb1971d923f64357d17c00
-      HOST_REV: 2c4cdc326a33468f62dbaa49883a871c599dc0a2
+      HOST_REV: 3a3666cc9994f6add1c453f2684285012caa44cf
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache/restore@v4
