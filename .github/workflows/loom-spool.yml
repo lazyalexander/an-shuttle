@@ -93,8 +93,9 @@ jobs:
         run: |
           npm install -g @openai/codex@0.166.0
           npm run test:codex
+      # Five sequential completion/reuse saves share this step; each retains its own deadline.
       - name: Browser save (vise, Codex completion and reuse)
-        timeout-minutes: 4
+        timeout-minutes: 8
         env:
           CAD_PAINT_FIXTURE: vise
           CAD_MATERIAL_READER: ${{ github.workspace }}/integrations/material-evidence/examples/cad-material-evidence/read_material.py
