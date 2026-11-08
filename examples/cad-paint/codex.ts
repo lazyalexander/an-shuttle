@@ -16,7 +16,8 @@ export async function runCodex(folder:string,task:Task,signal:AbortSignal):Promi
   const binary=await resolveBinary(process.env.CAD_MATERIAL_CODEX_BIN ?? 'codex');
   const digest=createHash('sha256');
   for await(const chunk of createReadStream(binary))digest.update(chunk);
-  const submitted=await daemonApproved({op:'harness',task:{label:task.name,binary,
+  const parent=createHash('sha256').update(resolve(folder)).digest('hex');
+  const submitted=await daemonApproved({op:'delegate',parent,task:{label:task.name,binary,
     binary_sha256:digest.digest('hex'),
     prompt:task.prompt,schema:task.schema,scope:task.scope,mcp:task.mcp ?? null,
     model:process.env.CAD_MATERIAL_CODEX_MODEL ?? null}});
@@ -25,7 +26,9 @@ export async function runCodex(folder:string,task:Task,signal:AbortSignal):Promi
   await writeFile(join(job,'receipt.json'),JSON.stringify(receipt),{mode:0o600,flag:'wx'});
   const completed=await waitTask(submitted.id,signal);
   if(completed.outcome!=='succeeded') throw Error('Codex material task failed; inspect service task '+submitted.id);
-  const result=await daemonRequest<{proposal:unknown}>({op:'harness-result',id:submitted.id});
+  const inbox=await daemonRequest<{messages:{id:string;proposal?:unknown}[]}>({op:'delegation-inbox',parent});
+  const result=inbox.messages.find(message=>message.id===submitted.id);
+  if(!result || !Object.hasOwn(result,'proposal')) throw Error('Completed delegation has no returned proposal');
   signal.throwIfAborted();
   await writeFile(join(job,'receipt.json'),JSON.stringify({...receipt,status:'completed'}),{mode:0o600});
   return result.proposal;
