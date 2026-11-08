@@ -16,7 +16,7 @@ import {openInKrita} from '@an-shuttle/krita/document.js';
 import {paint,paintStandalone} from './spool.js';
 import {authorizeMaterialDisclosure,readPreviousMaterial} from './host.js';
 import {codexMaterialTurn} from './codex-material.js';
-import {verifyMaterial} from './verify-material.js';
+import {verifyMaterial} from '@an-spool/cad-material-policy';
 
 export function studio(port=4183,{output=resolve('paintings'),render=paint,open=openInKrita,cut=configuredCut,drawing=benchVise as Model,readMaterial=readPreviousMaterial,materialTurn=codexMaterialTurn,authorizeMaterial=authorizeMaterialDisclosure}={}) {
   const referencePart=drawing.id==='handwheel' ? 'grip' : drawing.id==='vise' ? 'movingJaw' : null;

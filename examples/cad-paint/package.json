@@ -10,6 +10,7 @@
     "@an-loom/cad-paint-spool": "https://raw.githubusercontent.com/lazyalexander/an-spool/a9bffc3f757f7c82c4dcbca78d063f317d38a27d/spools/cad-paint/releases/an-loom-cad-paint-spool-0.1.0.tgz",
     "@an-shuttle/cad": "0.0.0",
     "@an-shuttle/krita": "0.0.0",
+    "@an-spool/cad-material-policy": "https://raw.githubusercontent.com/lazyalexander/an-spool/dc23c765944eebb4ff060229b936af5a4c613f13/packages/cad-material-policy/releases/an-spool-cad-material-policy-0.1.0.tgz",
     "@modelcontextprotocol/sdk": "1.29.0",
     "zod": "4.3.6"
   }

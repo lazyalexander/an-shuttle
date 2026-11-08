@@ -99,13 +99,8 @@ export async function renderWithHost(folder: string, input: string, candidate: s
   return join(folder,'painting.ora');
 }
 
-export interface MaterialEvidence {
-  schema: 'cad-material-evidence-v1';
-  part: string;
-  source: {document:string;epoch:string;revision:number};
-  artifact: {revision:string;release:string};
-  material: {finish:string;color:string;metallic:number;roughness:number};
-}
+export type {MaterialEvidence} from '@an-spool/cad-material-policy';
+import type {MaterialEvidence} from '@an-spool/cad-material-policy';
 
 export async function authorizeMaterialDisclosure(reader:string,document:string,part:string,signal:AbortSignal) {
   signal.throwIfAborted();
