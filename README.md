@@ -62,7 +62,7 @@ The two demos share capture, locking, material negotiation, scene rendering, ORA
 
 A CAD save carries an intent, a fixed document revision, its observations and optional operator direction through `packages/cad/shuttle.ts`. The studio holds the CAD lock and hands that message to the domain agent. It gives the model the missing part labels, the existing finishes and the direction. With complete materials it can start the baseline directly.
 
-The [CAD painting reference package in Loom](https://github.com/lazyalexander/an-loom/tree/821176910ceba06fa5fa0b6036d7f4d09291c2d1/examples/cad-paint) owns the domain source. `npm ci` installs v0.1.0 from an immutable commit URL and verifies the distribution against the integrity in `package-lock.json`. Both CAD models use this package. The macOS acceptance exports the exact Loom archive included in it. Its agent proposes a private `kit/appearance.py` for this attempt. Its read-only silk owns the render, PNG/ORA shape and pixel reconstruction. The resulting document records the input and selected kit digests. For each managed save, the studio exports the pinned archive into a fresh native instance. It applies an appearance kit only when materials are missing. The host supervises one run, accepts the outputs and checks out the two fixed revisions in its catalog. The studio records this inventory in `accepted.json` and makes the ORA visible after both checkouts. Each attempt retains its `saved.json`, `request.json` and instance for inspection. For a lost supervisor response, `an-agent-host spool-status <attempt>/instance paint` inspects the same attempt. The macOS acceptance exercises this path through two browser tabs. Further part cutting is a new attempt with its own input.
+The [mature CAD painting package in an-spool](https://github.com/lazyalexander/an-spool/tree/a9bffc3f757f7c82c4dcbca78d063f317d38a27d/spools/cad-paint) owns the domain source. `npm ci` installs v0.1.0 from an immutable commit URL and verifies the distribution against the integrity in `package-lock.json`. Both CAD models use this package. The macOS acceptance exports the exact Loom archive included in it. Its agent proposes a private `kit/appearance.py` for this attempt. Its read-only silk owns the render, PNG/ORA shape and pixel reconstruction. The resulting document records the input and selected kit digests. For each managed save, the studio exports the pinned archive into a fresh native instance. It applies an appearance kit only when materials are missing. The host supervises one run, accepts the outputs and checks out the two fixed revisions in its catalog. The studio records this inventory in `accepted.json` and makes the ORA visible after both checkouts. Each attempt retains its `saved.json`, `request.json` and instance for inspection. For a lost supervisor response, `an-agent-host spool-status <attempt>/instance paint` inspects the same attempt. The macOS acceptance exercises this path through two browser tabs. Further part cutting is a new attempt with its own input.
 
 The [content label contract](https://github.com/lazyalexander/an-loom/blob/main/docs/spool-code.md)
 labels all selected spool release files silk, including historical `kit/` paths.
@@ -164,7 +164,7 @@ The studio exposes cancellation while historical verification is pending. It
 revokes the MCP read, interrupts the CLI and waits for its local process to
 close before releasing the save. A late response cannot publish evidence or
 enter rendering. The private `material-codex/receipt.json` records submission
-and CLI completion; `native-events.jsonl` retains Codex events privately for
+and CLI completion; its service/task reference locates private Codex events for
 inspection, without an application-owned transcript format. A submitted receipt
 without completion requires inspection,
 never automatic replay. Each save folder can be submitted once. Native render
@@ -193,7 +193,7 @@ The cancellation button covers both material stages. Preparation checks the
 same abort signal before publishing the kit/request. Once preparation hands
 off to native rendering, the material button disappears and host supervision
 owns settlement. `material-completion-codex/` retains the same private receipt
-and native event format as `material-codex/`. `codex-default` in the request's
+and service/task reference format as `material-codex/`. `codex-default` in the request's
 model field denotes a request using Codex's default model selector.
 
 The old Ollama HTTP client, endpoint/model settings and observation proxy are
@@ -223,3 +223,20 @@ accepted PNG/ORA inventory and actual Krita import separately.
 See the [completion qualification](examples/cad-paint/qualification-codex-completion.md)
 for current coverage. The [history qualification](examples/cad-paint/qualification-codex-material.md)
 records the earlier migration stage.
+
+## Local user service
+
+Use the reviewed an-agent host service for both material proposals and painting.
+Resolve the host executable to its real path and initialize a private service
+root once with `an-agent-host daemon init /absolute/service 2`, then run
+`an-agent-host daemon serve /absolute/service` (or its generated LaunchAgent).
+Set `AN_AGENT_HOST_BIN` to that same host and `AN_AGENT_DAEMON_ROOT` to the service
+root before starting the studio. The private `endpoint.json` opens the read-only
+workbench. No container or local model server is required.
+
+Shuttle keeps domain disclosure, request validation, CAD locking and application
+handoff. The service owns the finite Codex client, queue, independent owners and
+resource observations. Painting still uses the original native execution and
+artifact checkout path. A lost connection observes the same task; it never
+resubmits work or releases the CAD lock without original termination evidence.
+No legacy local Codex launcher is retained as a fallback.
