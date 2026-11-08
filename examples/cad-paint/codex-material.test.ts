@@ -7,7 +7,7 @@ import test from 'node:test';
 import {once} from 'node:events';
 import {codexMaterialTurn} from './codex-material.js';
 import {codexFixture} from './codex-fixture.test-helper.js';
-import {verifyMaterial} from './verify-material.js';
+import {verifyMaterial} from '@an-spool/cad-material-policy';
 import {completeMaterials} from './codex-completion.js';
 import {paintStandalone} from './spool.js';
 import {benchVise} from '@an-shuttle/cad/drawing.js';

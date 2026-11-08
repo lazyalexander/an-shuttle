@@ -8,7 +8,7 @@ import {promisify} from 'node:util';
 import {benchVise,type Model,type SavedDrawing} from '@an-shuttle/cad/drawing.js';
 import {paintRequest} from '@an-shuttle/cad/shuttle.js';
 import {renderWithHost,type MaterialEvidence} from './host.js';
-import {planKit} from '@an-loom/cad-paint-spool/agent';
+import {appearanceKit} from '@an-spool/cad-material-policy';
 import {completeMaterials} from './codex-completion.js';
 
 async function prepare(scene:SavedDrawing, revision:number, folder:string, drawing:Model, epoch:string, direction:string, reused?:MaterialEvidence, signal:AbortSignal=new AbortController().signal) {
@@ -20,16 +20,8 @@ async function prepare(scene:SavedDrawing, revision:number, folder:string, drawi
   const model=process.env.CAD_MATERIAL_CODEX_MODEL ?? 'codex-default';
   const missing=Object.fromEntries(Object.entries(request.parts).filter(([p])=>!request.scene.materials[p])
     .map(([p,spec])=>[p,{label:spec.label}]));
-  const modelMissing=Object.fromEntries(Object.entries(missing).filter(([part])=>!reused||part!==reused.part));
-  const needsModel=Object.keys(modelMissing).length!==0;
-  const code=await planKit({...request.context,supplied:request.scene.materials,missing},async brief=>{
-    const proposal=needsModel ? await completeMaterials({...brief,supplied:{...brief.supplied,...(reused ? {[reused.part]:reused.material} : {})},missing:modelMissing},root,signal) : {};
-    if (!reused) return proposal;
-    if (!proposal || typeof proposal!=='object' || Array.isArray(proposal) ||
-        Object.keys(proposal).some(part=>!Object.hasOwn(modelMissing,part)))
-      throw Error('Unexpected material proposal');
-    return {...proposal,[reused.part]:reused.material};
-  });
+  const {code,needsModel}=await appearanceKit({...request.context,supplied:request.scene.materials,missing},
+    reused,brief=>completeMaterials(brief,root,signal));
   signal.throwIfAborted();
   const candidate=join(root,'appearance.py');
   if (code!==null) await writeFile(candidate,code,{flag:'wx'});
