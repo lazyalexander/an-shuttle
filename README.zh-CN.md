@@ -45,3 +45,5 @@ Shuttle 将已验收的可编辑产物交给应用。动画的应用交付待验
 [配置、验收与限制](docs/cad-paint.zh-CN.md) ·
 [分层样品](examples/cad-paint/sample/vise.ora) ·
 [领域 spool 目录](https://github.com/lazyalexander/an-spool)
+
+kit 标记 agent 修改或新增的代码、skill 和文件。未修改副本保留 silk 基线标签。修改历史、当前基线匹配、可信度和保留决定分别记录，路径与旧槽位名称不决定标签。
