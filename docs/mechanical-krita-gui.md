@@ -23,3 +23,7 @@ Finally, a reviewed host workspace job bound the original film artifact revision
 ## Dependencies
 
 Use an-agent #216 for the mechanical source workflow, Loom #113 for terminology alignment, and an-spool #6 for the three teaching packages. Merge those in that order before this documentation PR. The application bridge is reused without a new GUI driver. Native grants, raw UI state and working files remain local.
+
+## Native teaching application handoff
+
+The native teaching application in an-spool uses `packages/krita/dist/accepted.js HOST INSTANCE RUN NEW_ORA_PATH`. This finite adapter obtains `painting.ora` through the original host artifact inventory, checks an accepted revision, checks it out through the existing custody API and calls the same `openInKrita`. Unaccepted output refuses before GUI launch. It is an application handoff, not a second spool host, model client or GUI driver. The native application opening request does not itself prove visual content or a completed GUI save; those remain separately observed acceptance.

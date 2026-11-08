@@ -13,3 +13,7 @@
 随后通过既有宿主工作区验证任务，绑定原始成片 revision、提取基准帧、检查 KRA 格式、尺寸、两个绘画图层和像素变化，并正式接收固定 KRA 与报告 revision。GUI 应用由用户持有，宿主验证返回文件并负责接收后的产物保管。
 
 合并顺序为 an-agent #216 → Loom #113 → an-spool #6 → 本 PR。复用已有应用桥接，未增加 GUI 驱动。原始 UI 状态、授权文件和工作记录保留在本地。
+
+## 原生教学应用交接
+
+an-spool 的原生教学应用调用 `packages/krita/dist/accepted.js HOST INSTANCE RUN NEW_ORA_PATH`。薄适配器从原宿主取得已验收 `painting.ora` 的固定版本，经原有产物检出接口落地，再调用同一 `openInKrita`。未验收产物在打开前拒绝。这不新增 spool 宿主、模型客户端或 GUI 驱动；打开请求不等于视觉内容确认或 GUI 回存完成，后两项仍须单独观察验收。
