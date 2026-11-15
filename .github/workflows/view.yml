@@ -1,8 +1,9 @@
 name: View acceptance
 on:
   pull_request:
+    branches: [main, dev-advance]
   push:
-    branches: [main]
+    branches: [main, dev-advance]
     paths:
       - 'package-lock.json'
       - '**/tsconfig*.json'

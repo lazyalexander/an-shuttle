@@ -1,11 +1,12 @@
 name: Native CAD spool
 on:
   push:
-    branches: [main]
+    branches: [main, dev-advance]
     paths:
       - 'package-lock.json'
       - '.github/workflows/loom-spool.yml'
   pull_request:
+    branches: [main, dev-advance]
     paths:
       - 'package-lock.json'
       - 'examples/cad-paint/**'
